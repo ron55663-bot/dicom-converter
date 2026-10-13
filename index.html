@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>DICOM 影像轉換器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: a light-box workbench. Settings rail on the left, film strip of files on the right; DICOM tags shown in amber like viewer annotations. */
+:root{
+  --bg:#eaeef2; --surface:#ffffff; --sunken:#f3f6f9; --ink:#121c26; --muted:#566676; --line:#d2dae2;
+  --accent:#1f56c4; --accent-ink:#ffffff; --tag:#a35f00; --ok:#18794e; --warn:#a14a00; --err:#b42318;
+  --viewer:#080b0e;
+  --f-display:"IBM Plex Sans Condensed","Noto Sans TC",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans","Noto Sans TC",system-ui,-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d1218; --surface:#141b23; --sunken:#10161d; --ink:#e2e8ee; --muted:#8d9cab; --line:#25303b;
+  --accent:#7da4ff; --accent-ink:#0b1424; --tag:#f0b24a; --ok:#4cc38a; --warn:#f0a050; --err:#ff7b6b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d1218; --surface:#141b23; --sunken:#10161d; --ink:#e2e8ee; --muted:#8d9cab; --line:#25303b;
+  --accent:#7da4ff; --accent-ink:#0b1424; --tag:#f0b24a; --ok:#4cc38a; --warn:#f0a050; --err:#ff7b6b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:28px 56px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:22px}
+h1{font-family:var(--f-display);font-weight:600;font-size:clamp(26px,4vw,36px);line-height:1.1;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 .arrow{color:var(--accent);padding-inline:.15em}
+.sub{color:var(--muted);margin:6px 0 0;max-width:60ch}
+.privacy{font-family:var(--f-mono);font-size:12px;color:var(--ok);border:1px solid currentColor;border-radius:4px;padding:4px 8px;white-space:nowrap}
+.tabs{display:inline-flex;background:var(--sunken);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px;margin-bottom:16px;max-width:100%}
+.tab{font:500 15px var(--f-body);border:0;background:transparent;color:var(--muted);padding:8px 16px;border-radius:6px;cursor:pointer;white-space:nowrap}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tab:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.panel{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:820px){.panel{grid-template-columns:minmax(0,1fr)}}
+.rail{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.rail h2,.main h2{font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:13px;font-weight:500;display:flex;justify-content:space-between;gap:8px}
+.field label code{font-family:var(--f-mono);font-size:11px;color:var(--tag);font-weight:400}
+input[type=text],input[type=date],select{font:14px var(--f-body);color:var(--ink);background:var(--sunken);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{flex:1 1 auto;font-size:13px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer;text-align:center;background:var(--sunken)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){border-color:var(--accent);color:var(--accent);background:var(--surface);font-weight:500}
+.seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:1px}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.main{display:flex;flex-direction:column;gap:14px;min-width:0}
+.drop{border:1.5px dashed var(--line);border-radius:10px;background:var(--surface);padding:26px 18px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--accent);background:var(--sunken)}
+.drop strong{display:block;font-family:var(--f-display);font-size:19px;font-weight:600}
+.drop p{margin:4px 0 12px;color:var(--muted);font-size:13px}
+.drop .btns{display:flex;justify-content:center;flex-wrap:wrap;gap:8px}
+button{font:500 14px var(--f-body);cursor:pointer;border-radius:6px;padding:8px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.primary:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:6px 8px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.bar .count{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.bar .actions{display:flex;gap:8px;flex-wrap:wrap}
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.item{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:14px;align-items:center;padding:10px 12px;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.thumb{width:72px;height:72px;background:var(--viewer);border-radius:4px;display:grid;place-items:center;overflow:hidden;position:relative}
+.thumb canvas,.thumb img{max-width:100%;max-height:100%;display:block}
+.thumb .fr{position:absolute;right:3px;bottom:2px;font:10px var(--f-mono);color:#f0b24a}
+.info{min-width:0}
+.name{font-weight:500;overflow-wrap:anywhere;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.meta{font-family:var(--f-mono);font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.meta b{color:var(--tag);font-weight:400}
+.pill{font:500 11px var(--f-mono);border-radius:3px;padding:1px 6px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.err{color:var(--err)}.pill.ex{color:var(--tag)}
+.item .ops{display:flex;gap:4px;align-items:center}
+.empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:14px}
+.notes{margin-top:34px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+.notes section{min-width:0}
+.notes h3{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 6px}
+.notes p,.notes li{color:var(--muted);font-size:13.5px;margin:0}
+.notes ul{padding-left:18px;margin:0;display:flex;flex-direction:column;gap:3px}
+.tree{font-family:var(--f-mono);font-size:12.5px;background:var(--sunken);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:0;overflow-x:auto;color:var(--ink);line-height:1.6}
+.tree em{color:var(--tag);font-style:normal}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:6px;font-size:14px;max-width:calc(100% - 32px);z-index:10}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>JPG・PNG <span class="arrow">⇄</span> DICOM</h1>
+      <p class="sub">把一般圖片轉成 DICOM／DICOMDIR，或把 DICOM 影像轉回 PNG、JPG。拖進檔案就會立刻轉換。</p>
+    </div>
+    <span class="privacy">● 檔案只在你的瀏覽器內處理，不會上傳</span>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-img" aria-selected="true" aria-controls="p-img">圖片 → DICOM</button>
+    <button class="tab" role="tab" id="tab-dcm" aria-selected="false" aria-controls="p-dcm">DICOM → 圖片</button>
+  </div>
+
+  <!-- Image -> DICOM -->
+  <div class="panel" id="p-img" role="tabpanel" aria-labelledby="tab-img">
+    <form class="rail" id="f-img" autocomplete="off">
+      <h2>病患與檢查資料</h2>
+      <div class="field"><label for="pn">病患姓名 <code>(0010,0010)</code></label><input type="text" id="pn" placeholder="WANG^XIAOMING"></div>
+      <div class="row2">
+        <div class="field"><label for="pid">病歷號 <code>(0010,0020)</code></label><input type="text" id="pid" placeholder="ANON0001"></div>
+        <div class="field"><label for="sex">性別 <code>(0010,0040)</code></label><select id="sex"><option value="">—</option><option value="M">男 M</option><option value="F">女 F</option><option value="O">其他 O</option></select></div>
+      </div>
+      <div class="field"><label for="bd">出生日期 <code>(0010,0030)</code></label><input type="date" id="bd"></div>
+      <div class="field"><label for="sd">檢查描述 <code>(0008,1030)</code></label><input type="text" id="sd" placeholder="Secondary Capture"></div>
+      <div class="row2">
+        <div class="field"><label for="acc">檢查單號 <code>(0008,0050)</code></label><input type="text" id="acc"></div>
+        <div class="field"><label for="mod">儀器類別 <code>(0008,0060)</code></label>
+          <select id="mod"><option value="OT">OT 其他</option><option value="XC">XC 外部相機</option><option value="ES">ES 內視鏡</option><option value="US">US 超音波</option><option value="DX">DX 數位X光</option><option value="CR">CR 電腦X光</option><option value="SM">SM 顯微</option><option value="DOC">DOC 文件</option></select></div>
+      </div>
+      <h2>輸出</h2>
+      <div class="field"><label>格式</label>
+        <div class="seg"><label><input type="radio" name="out" value="dir" checked>DICOMDIR 資料夾</label><label><input type="radio" name="out" value="dcm">個別 .dcm 檔</label></div>
+      </div>
+      <div class="field"><label>色彩 <code>(0028,0004)</code></label>
+        <div class="seg"><label><input type="radio" name="color" value="auto" checked>自動</label><label><input type="radio" name="color" value="rgb">彩色 RGB</label><label><input type="radio" name="color" value="gray">灰階</label></div>
+      </div>
+      <p class="hint">所有圖片會放進同一個檢查（Study）與序列（Series），依清單順序編號。下載的是 ZIP，解壓後即可用 DICOM 檢視器或燒錄軟體開啟。</p>
+    </form>
+    <div class="main">
+      <div class="drop" id="drop-img" tabindex="0">
+        <strong>拖曳 JPG、PNG 到這裡</strong>
+        <p>可一次放多張，或整個資料夾。也支援 WebP、BMP、GIF。</p>
+        <div class="btns"><button type="button" id="pick-img">選擇圖片</button><button type="button" id="pick-img-dir">選擇資料夾</button></div>
+      </div>
+      <div class="bar">
+        <span class="count" id="cnt-img"></span>
+        <div class="actions"><button type="button" class="ghost" id="clr-img">清除全部</button><button type="button" class="primary" id="dl-img">下載 DICOMDIR (ZIP)</button></div>
+      </div>
+      <div class="list" id="list-img"></div>
+    </div>
+  </div>
+
+  <!-- DICOM -> Image -->
+  <div class="panel" id="p-dcm" role="tabpanel" aria-labelledby="tab-dcm" hidden>
+    <form class="rail" id="f-dcm" autocomplete="off">
+      <h2>輸出設定</h2>
+      <div class="field"><label>圖片格式</label>
+        <div class="seg"><label><input type="radio" name="fmt" value="png" checked>PNG 無損</label><label><input type="radio" name="fmt" value="jpg">JPG</label></div>
+      </div>
+      <div class="field"><label>窗寬窗位 <code>(0028,1050/1051)</code></label>
+        <div class="seg"><label><input type="radio" name="win" value="file" checked>依檔案設定</label><label><input type="radio" name="win" value="auto">自動全範圍</label></div>
+      </div>
+      <div class="field"><label>多影格檔案 <code>(0028,0008)</code></label>
+        <div class="seg"><label><input type="radio" name="frames" value="all" checked>輸出全部影格</label><label><input type="radio" name="frames" value="first">只取第一格</label></div>
+      </div>
+      <p class="hint">可上傳單一 .dcm、整個 DICOMDIR 資料夾，或包含 DICOMDIR 的 ZIP（例如光碟內容）。沒有副檔名的 DICOM 檔也能辨識。</p>
+      <p class="hint">支援未壓縮、RLE、JPEG Baseline 壓縮。JPEG 2000 與 JPEG-LS 視瀏覽器而定，可能無法解碼。</p>
+    </form>
+    <div class="main">
+      <div class="drop" id="drop-dcm" tabindex="0">
+        <strong>拖曳 DICOM 檔、DICOMDIR 資料夾或 ZIP</strong>
+        <p>轉出的圖片保留原本的資料夾結構。</p>
+        <div class="btns"><button type="button" id="pick-dcm">選擇檔案</button><button type="button" id="pick-dcm-dir">選擇資料夾</button></div>
+      </div>
+      <div class="bar">
+        <span class="count" id="cnt-dcm"></span>
+        <div class="actions"><button type="button" class="ghost" id="clr-dcm">清除全部</button><button type="button" class="primary" id="dl-dcm">全部下載 (ZIP)</button></div>
+      </div>
+      <div class="list" id="list-dcm"></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <section>
+      <h3>DICOMDIR 輸出結構</h3>
+      <pre class="tree">DICOMDIR_ANON0001.zip
+├─ <em>DICOMDIR</em>        索引檔
+└─ DICOM/
+   ├─ IM000001     第 1 張
+   ├─ IM000002     第 2 張
+   └─ …</pre>
+    </section>
+    <section>
+      <h3>轉成 DICOM 的內容</h3>
+      <ul>
+        <li>SOP 類別：Secondary Capture <span class="meta">1.2.840.10008.5.1.4.1.1.7</span></li>
+        <li>傳輸語法：Explicit VR Little Endian，未壓縮，畫質不會損失</li>
+        <li>字元集 ISO_IR 192 (UTF-8)，中文姓名可正常保存</li>
+        <li>透明背景會以黑色填滿</li>
+      </ul>
+    </section>
+    <section>
+      <h3>注意</h3>
+      <ul>
+        <li>轉出的檔案屬於二次擷取影像，不含原始的掃描參數，不適合作為正式診斷依據。</li>
+        <li>DICOM 轉圖片時，病患資料不會寫進 PNG／JPG。</li>
+      </ul>
+    </section>
+  </div>
+</div>
+
+<input type="file" id="in-img" accept="image/*,.zip" multiple hidden>
+<input type="file" id="in-img-dir" webkitdirectory multiple hidden>
+<input type="file" id="in-dcm" multiple hidden>
+<input type="file" id="in-dcm-dir" webkitdirectory multiple hidden>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+"use strict";
+/* ================= DICOM constants & helpers ================= */
+const TS_IMPLICIT='1.2.840.10008.1.2', TS_EXPLICIT='1.2.840.10008.1.2.1', TS_BIG='1.2.840.10008.1.2.2',
+      TS_DEFLATE='1.2.840.10008.1.2.1.99', TS_RLE='1.2.840.10008.1.2.5';
+const SC_CLASS='1.2.840.10008.5.1.4.1.1.7', MEDIA_DIR='1.2.840.10008.1.3.10';
+const IMPL_UID='2.25.302114775138479417337465291838906231201', IMPL_VER='WEBDCM_1_0';
+const TS_NAMES={'1.2.840.10008.1.2':'Implicit LE','1.2.840.10008.1.2.1':'Explicit LE','1.2.840.10008.1.2.2':'Explicit BE',
+  '1.2.840.10008.1.2.1.99':'Deflate','1.2.840.10008.1.2.5':'RLE','1.2.840.10008.1.2.4.50':'JPEG Baseline',
+  '1.2.840.10008.1.2.4.51':'JPEG Extended','1.2.840.10008.1.2.4.57':'JPEG Lossless','1.2.840.10008.1.2.4.70':'JPEG Lossless SV1',
+  '1.2.840.10008.1.2.4.80':'JPEG-LS','1.2.840.10008.1.2.4.81':'JPEG-LS','1.2.840.10008.1.2.4.90':'JPEG 2000',
+  '1.2.840.10008.1.2.4.91':'JPEG 2000','1.2.840.10008.1.2.4.201':'HTJ2K','1.2.840.10008.1.2.4.203':'HTJ2K'};
+const LONGVR=new Set(['OB','OW','OF','OD','OL','OV','SQ','UT','UN','UC','UR','SV','UV']);
+const UNDEF=0xFFFFFFFF;
+const enc=new TextEncoder();
+
+function concat(arrs){let n=0;for(const a of arrs)n+=a.length;const o=new Uint8Array(n);let p=0;for(const a of arrs){o.set(a,p);p+=a.length;}return o;}
+function uid(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;let n=0n;for(const x of b)n=(n<<8n)|BigInt(x);return '2.25.'+n.toString();}
+function strBytes(s,vr){let b=enc.encode(s==null?'':String(s));if(b.length%2){const p=new Uint8Array(b.length+1);p.set(b);p[b.length]=vr==='UI'?0:0x20;b=p;}return b;}
+function u16(v){const b=new Uint8Array(2);new DataView(b.buffer).setUint16(0,v,true);return b;}
+function u32(v){const b=new Uint8Array(4);new DataView(b.buffer).setUint32(0,v,true);return b;}
+function elem(g,e,vr,val){
+  const long=LONGVR.has(vr);const h=new Uint8Array(long?12:8);const dv=new DataView(h.buffer);
+  dv.setUint16(0,g,true);dv.setUint16(2,e,true);h[4]=vr.charCodeAt(0);h[5]=vr.charCodeAt(1);
+  if(long)dv.setUint32(8,val.length,true);else dv.setUint16(6,val.length,true);
+  return concat([h,val]);
+}
+const S=(g,e,vr,s)=>elem(g,e,vr,strBytes(s,vr));
+const US=(g,e,v)=>elem(g,e,'US',u16(v));
+const UL=(g,e,v)=>elem(g,e,'UL',u32(v));
+function itemHdr(len){const b=new Uint8Array(8);const dv=new DataView(b.buffer);dv.setUint16(0,0xFFFE,true);dv.setUint16(2,0xE000,true);dv.setUint32(4,len,true);return b;}
+function metaHeader(sopClass,sopInst){
+  const body=concat([elem(2,1,'OB',new Uint8Array([0,1])),S(2,2,'UI',sopClass),S(2,3,'UI',sopInst),S(2,0x10,'UI',TS_EXPLICIT),S(2,0x12,'UI',IMPL_UID),S(2,0x13,'SH',IMPL_VER)]);
+  const pre=new Uint8Array(132);pre.set([68,73,67,77],128);
+  return concat([pre,UL(2,0,body.length),body]);
+}
+function daStr(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');}
+function tmStr(d){return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+String(d.getSeconds()).padStart(2,'0');}
+
+/* ================= Image -> DICOM ================= */
+async function decodeImage(blob){
+  const bmp=await createImageBitmap(blob);
+  const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;
+  const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,c.width,c.height);x.drawImage(bmp,0,0);
+  if(bmp.close)bmp.close();
+  return x.getImageData(0,0,c.width,c.height);
+}
+function isGrayImage(data){for(let i=0;i<data.length;i+=4){if(data[i]!==data[i+1]||data[i]!==data[i+2])return false;}return true;}
+
+function buildImageDicom(imgData,colorMode,m,study,instNo){
+  const w=imgData.width,h=imgData.height,d=imgData.data,n=w*h;
+  if(w>65535||h>65535)throw new Error('圖片尺寸超過 DICOM 上限 65535 像素');
+  const gray=colorMode==='gray'||(colorMode==='auto'&&isGrayImage(d));
+  let px;
+  if(gray){px=new Uint8Array(n+(n%2));
+    if(colorMode==='gray'){for(let i=0,j=0;i<n;i++,j+=4)px[i]=Math.round(.299*d[j]+.587*d[j+1]+.114*d[j+2]);}
+    else{for(let i=0,j=0;i<n;i++,j+=4)px[i]=d[j];}
+  }else{const len=n*3;px=new Uint8Array(len+(len%2));
+    for(let i=0,j=0,k=0;i<n;i++,j+=4,k+=3){px[k]=d[j];px[k+1]=d[j+1];px[k+2]=d[j+2];}}
+  const sop=uid();
+  const els=[
+    S(8,5,'CS','ISO_IR 192'),S(8,8,'CS','DERIVED\\SECONDARY'),S(8,0x16,'UI',SC_CLASS),S(8,0x18,'UI',sop),
+    S(8,0x20,'DA',study.date),S(8,0x23,'DA',study.date),S(8,0x30,'TM',study.time),S(8,0x33,'TM',study.time),
+    S(8,0x50,'SH',m.acc),S(8,0x60,'CS',m.mod),S(8,0x64,'CS','WSD'),S(8,0x90,'PN',''),
+    S(8,0x1030,'LO',m.sd),S(8,0x103E,'LO','Converted images'),
+    S(0x10,0x10,'PN',m.pn),S(0x10,0x20,'LO',m.pid),S(0x10,0x30,'DA',m.bd),S(0x10,0x40,'CS',m.sex),
+    S(0x20,0xD,'UI',study.studyUID),S(0x20,0xE,'UI',study.seriesUID),S(0x20,0x10,'SH','1'),
+    S(0x20,0x11,'IS','1'),S(0x20,0x13,'IS',String(instNo)),S(0x20,0x20,'CS',''),
+    US(0x28,2,gray?1:3),S(0x28,4,'CS',gray?'MONOCHROME2':'RGB')];
+  if(!gray)els.push(US(0x28,6,0));
+  els.push(US(0x28,0x10,h),US(0x28,0x11,w),US(0x28,0x100,8),US(0x28,0x101,8),US(0x28,0x102,7),US(0x28,0x103,0),elem(0x7FE0,0x10,'OB',px));
+  return {bytes:concat([metaHeader(SC_CLASS,sop),...els]),sop,gray,w,h};
+}
+
+function buildDicomdir(m,study,images,fsUID){
+  const rec=(type,next,lower,extra)=>concat([UL(4,0x1400,next),US(4,0x1410,0xFFFF),UL(4,0x1420,lower),S(4,0x1430,'CS',type),...extra]);
+  const pat=[S(8,5,'CS','ISO_IR 192'),S(0x10,0x10,'PN',m.pn),S(0x10,0x20,'LO',m.pid),S(0x10,0x30,'DA',m.bd),S(0x10,0x40,'CS',m.sex)];
+  const stu=[S(8,5,'CS','ISO_IR 192'),S(8,0x20,'DA',study.date),S(8,0x30,'TM',study.time),S(8,0x50,'SH',m.acc),S(8,0x1030,'LO',m.sd),S(0x20,0xD,'UI',study.studyUID),S(0x20,0x10,'SH','1')];
+  const ser=[S(8,0x60,'CS',m.mod),S(0x20,0xE,'UI',study.seriesUID),S(0x20,0x11,'IS','1')];
+  const img=im=>[S(4,0x1500,'CS',im.fileId.join('\\')),S(4,0x1510,'UI',SC_CLASS),S(4,0x1511,'UI',im.sop),S(4,0x1512,'UI',TS_EXPLICIT),S(0x20,0x13,'IS',String(im.instNo))];
+  const make=o=>[rec('PATIENT',0,o[1],pat),rec('STUDY',0,o[2],stu),rec('SERIES',0,o[3],ser),
+    ...images.map((im,i)=>rec('IMAGE',i<images.length-1?o[4+i]:0,0,img(im)))];
+  const meta=metaHeader(MEDIA_DIR,fsUID);
+  const fsid=S(4,0x1130,'CS','WEBDCM');
+  const headLen=meta.length+fsid.length+UL(4,0x1200,0).length*2+US(4,0x1212,0).length+12;
+  let recs=make(new Array(images.length+4).fill(0));
+  const offs=[];let pos=headLen;for(const r of recs){offs.push(pos);pos+=8+r.length;}
+  recs=make(offs);
+  const items=concat(recs.map(r=>concat([itemHdr(r.length),r])));
+  return concat([meta,fsid,UL(4,0x1200,offs[0]),UL(4,0x1202,offs[0]),US(4,0x1212,0),elem(4,0x1220,'SQ',items)]);
+}
+
+/* ================= DICOM parser ================= */
+function isUp(c){return c>=65&&c<=90;}
+function parseDataset(u8,start,explicit,le,stopAtMetaEnd){
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  const ds={};let frags=null,p=start;
+  function readEl(p){
+    const g=dv.getUint16(p,le),e=dv.getUint16(p+2,le);p+=4;
+    if(g===0xFFFE)return {g,e,vr:null,len:dv.getUint32(p,le),val:p+4};
+    if(explicit&&isUp(u8[p])&&isUp(u8[p+1])){
+      const vr=String.fromCharCode(u8[p],u8[p+1]);
+      if(LONGVR.has(vr))return {g,e,vr,len:dv.getUint32(p+4,le),val:p+8};
+      return {g,e,vr,len:dv.getUint16(p+2,le),val:p+4};
+    }
+    return {g,e,vr:null,len:dv.getUint32(p,le),val:p+4};
+  }
+  function skipItem(p){while(p+8<=u8.length){const el=readEl(p);if(el.g===0xFFFE&&el.e===0xE00D)return el.val;p=el.len===UNDEF?skipSeq(el.val):el.val+el.len;}return u8.length;}
+  function skipSeq(p){while(p+8<=u8.length){const el=readEl(p);
+    if(el.g===0xFFFE&&el.e===0xE0DD)return el.val;
+    if(el.g===0xFFFE&&el.e===0xE000){p=el.len===UNDEF?skipItem(el.val):el.val+el.len;}
+    else p=el.len===UNDEF?skipSeq(el.val):el.val+el.len;}
+    return u8.length;}
+  while(p+8<=u8.length){
+    if(stopAtMetaEnd&&dv.getUint16(p,true)!==2)break;
+    const el=readEl(p);const key=((el.g<<16)|el.e)>>>0;
+    if(el.g===0xFFFE){p=el.val+(el.len===UNDEF?0:el.len);continue;}
+    if(el.g===0x7FE0&&el.e===0x10){
+      if(el.len===UNDEF){frags=[];let q=el.val;
+        while(q+8<=u8.length){const it=readEl(q);if(it.g===0xFFFE&&it.e===0xE000){frags.push({pos:q,off:it.val,len:it.len});q=it.val+it.len;}else break;}
+      }else ds[key]={vr:el.vr,off:el.val,len:Math.min(el.len,u8.length-el.val),le};
+      break;
+    }
+    if(el.len===UNDEF){p=skipSeq(el.val);continue;}
+    if(el.val+el.len>u8.length)break;
+    ds[key]={vr:el.vr,off:el.val,len:el.len,le};
+    p=el.val+el.len;
+  }
+  return {ds,frags,end:p};
+}
+
+async function inflateRaw(bytes){
+  if(typeof DecompressionStream==='undefined')throw new Error('此瀏覽器不支援 Deflate 解壓縮');
+  const s=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  const reader=s.getReader(),chunks=[];
+  try{for(;;){const {done,value}=await reader.read();if(done)break;chunks.push(value);}}
+  catch(e){if(!chunks.length)throw e;} // tolerate trailing padding after the deflate stream
+  return concat(chunks);
+}
+
+async function parseDicom(buf){
+  let u8=new Uint8Array(buf);
+  const dv=new DataView(buf);
+  let p=0,meta={ds:{}},ts=null;
+  const hasPre=u8.length>132&&u8[128]===68&&u8[129]===73&&u8[130]===67&&u8[131]===77;
+  if(hasPre)p=132;
+  if(u8.length<p+8)throw new Error('檔案太小，不是 DICOM');
+  if(dv.getUint16(p,true)===2){meta=parseDataset(u8,p,true,true,true);p=meta.end;}
+  else if(!hasPre){const g=dv.getUint16(0,true);if(g!==8&&g!==0x10&&g!==0x18&&g!==0x20&&g!==0x28)throw new Error('無法辨識的檔案格式');}
+  const tsEl=meta.ds[0x00020010];
+  const txt=e=>e?new TextDecoder('latin1').decode(u8.subarray(e.off,e.off+e.len)).replace(/[\0 ]+$/,'').trim():'';
+  ts=txt(tsEl);
+  if(!ts){ts=(isUp(u8[p+4])&&isUp(u8[p+5]))?TS_EXPLICIT:TS_IMPLICIT;}
+  if(ts===TS_DEFLATE){const inflated=await inflateRaw(u8.subarray(p));u8=inflated;p=0;}
+  const explicit=ts!==TS_IMPLICIT, le=ts!==TS_BIG;
+  const body=parseDataset(u8,p,explicit,le,false);
+  const ds=body.ds;
+  const metaU8=new Uint8Array(buf);
+  const raw=k=>ds[k]?u8.subarray(ds[k].off,ds[k].off+ds[k].len):null;
+  const cs=(()=>{const b=raw(0x00080005);return b?new TextDecoder('latin1').decode(b).trim():'';})();
+  let textDec;try{textDec=new TextDecoder(/GB18030|GBK/.test(cs)?'gb18030':/ISO_IR 100/.test(cs)&&!/192/.test(cs)?'latin1':/ISO_IR 13|ISO 2022 IR 87/.test(cs)?'shift_jis':/ISO_IR 149|IR 149/.test(cs)?'euc-kr':'utf-8');}catch(e){textDec=new TextDecoder('utf-8');}
+  const str=k=>{const b=raw(k);return b?textDec.decode(b).replace(/[\0\s]+$/,'').trim():'';};
+  const us=k=>{const e=ds[k];if(!e||e.len<2)return undefined;return new DataView(u8.buffer,u8.byteOffset).getUint16(e.off,e.le);};
+  const num=k=>{const v=parseFloat(str(k).split('\\')[0]);return isFinite(v)?v:undefined;};
+  const sopClass=str(0x00080016)||txt(meta.ds[0x00020002]);
+  const I={rows:us(0x00280010),cols:us(0x00280011),spp:us(0x00280002)||1,ba:us(0x00280100)||8,
+    pr:us(0x00280103)||0,photo:(str(0x00280004)||'MONOCHROME2').toUpperCase(),planar:us(0x00280006)||0,
+    frames:parseInt(str(0x00280008))||1,slope:num(0x00281053),intercept:num(0x00281052)||0,
+    wc:num(0x00281050),ww:num(0x00281051)};
+  I.bs=us(0x00280101)||I.ba;if(I.slope===undefined||I.slope===0)I.slope=1;
+  if(I.photo==='PALETTE COLOR'&&ds[0x00281101]){
+    const e=ds[0x00281101];const d2=new DataView(u8.buffer,u8.byteOffset);
+    const entries=d2.getUint16(e.off,e.le)||65536,first=d2.getUint16(e.off+2,e.le),bits=d2.getUint16(e.off+4,e.le);
+    const rd=k=>{const x=ds[k];if(!x)return null;const a=new Uint16Array(entries);for(let i=0;i<entries&&i*2+1<x.len;i++)a[i]=d2.getUint16(x.off+i*2,x.le);return a;};
+    I.lut={entries,first,bits,r:rd(0x00281201),g:rd(0x00281202),b:rd(0x00281203)};
+    if(!I.lut.r||!I.lut.g||!I.lut.b)I.lut=null;
+  }
+  return {u8,le,ts,ds,frags:body.frags,pixel:ds[0x7FE00010]||null,I,sopClass,
+    tags:{pn:str(0x00100010),pid:str(0x00100020),mod:str(0x00080060),date:str(0x00080020),desc:str(0x0008103E)||str(0x00081030)},
+    isDir:sopClass===MEDIA_DIR||!!ds[0x00041220]};
+}
+
+function frameGroups(d){
+  if(d._groups)return d._groups;
+  const all=d.frags||[];const bot=all[0];const data=all.slice(1);let g;
+  const nF=d.I.frames;
+  if(!data.length)g=[];
+  else if(bot&&bot.len>=4&&nF>1){
+    const dv=new DataView(d.u8.buffer,d.u8.byteOffset);const offs=[];
+    for(let i=0;i<bot.len/4;i++)offs.push(dv.getUint32(bot.off+i*4,true));
+    const base=data[0].pos;g=offs.map(()=>[]);
+    for(const f of data){const rel=f.pos-base;let idx=0;for(let j=0;j<offs.length;j++)if(rel>=offs[j])idx=j;g[idx].push(f);}
+  }else if(nF<=1)g=[data];
+  else if(data.length===nF)g=data.map(f=>[f]);
+  else{g=[];for(const f of data){const soi=d.u8[f.off]===0xFF&&d.u8[f.off+1]===0xD8;if(soi||!g.length)g.push([f]);else g[g.length-1].push(f);}}
+  return d._groups=g;
+}
+function frameCount(d){return d.frags?Math.max(1,Math.min(d.I.frames,frameGroups(d).length)):d.I.frames;}
+
+function decodeRLE(bytes,I){
+  const dv=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  const nSeg=dv.getUint32(0,true);const offs=[];for(let i=0;i<nSeg;i++)offs.push(dv.getUint32(4+i*4,true));
+  const bpp=I.ba/8,n=I.rows*I.cols,out=new Uint8Array(n*I.spp*bpp);
+  for(let s=0;s<nSeg;s++){
+    const end=s+1<nSeg?offs[s+1]:bytes.length;let p=offs[s],i=0;
+    const sample=Math.floor(s/bpp),byteIdx=bpp-1-(s%bpp);
+    const put=v=>{if(i<n){out[(i*I.spp+sample)*bpp+byteIdx]=v;i++;}};
+    while(p<end&&i<n){const c=(bytes[p++]<<24)>>24;
+      if(c>=0){for(let k=0;k<=c&&p<end;k++)put(bytes[p++]);}
+      else if(c!==-128){const v=bytes[p++];for(let k=0;k<1-c;k++)put(v);}}
+  }
+  return out;
+}
+
+function rawToCanvas(raw,le,I,winMode,planarOverride){
+  const w=I.cols,h=I.rows,n=w*h;
+  const img=new ImageData(w,h),o=img.data;
+  const dv=new DataView(raw.buffer,raw.byteOffset,raw.byteLength);
+  const bpp=I.ba/8;
+  const rd=bpp===1?(i=>raw[i]):bpp===2?(i=>dv.getUint16(i*2,le)):(i=>dv.getUint32(i*4,le));
+  const photo=I.photo,planar=planarOverride!=null?planarOverride:I.planar;
+  if(I.spp===1){
+    const vals=new Float32Array(n);let mn=Infinity,mx=-Infinity;
+    const lim=2**I.bs,half=2**(I.bs-1),isPal=photo==='PALETTE COLOR'&&I.lut;
+    for(let i=0;i<n;i++){let v=rd(i);if(I.bs<I.ba)v=v%lim;if(I.pr===1&&v>=half)v-=lim;
+      if(!isPal)v=v*I.slope+I.intercept;vals[i]=v;if(v<mn)mn=v;if(v>mx)mx=v;}
+    if(isPal){const L=I.lut,sh=L.bits===16?8:0;
+      for(let i=0,j=0;i<n;i++,j+=4){let k=vals[i]-L.first;k=k<0?0:k>=L.entries?L.entries-1:k;
+        o[j]=L.r[k]>>sh;o[j+1]=L.g[k]>>sh;o[j+2]=L.b[k]>>sh;o[j+3]=255;}
+    }else{
+      let lo=mn,hi=mx;
+      if(winMode==='file'&&I.wc!==undefined&&I.ww>1){lo=I.wc-I.ww/2;hi=I.wc+I.ww/2;}
+      const sc=hi>lo?255/(hi-lo):0,inv=photo==='MONOCHROME1';
+      for(let i=0,j=0;i<n;i++,j+=4){let g=(vals[i]-lo)*sc;g=g<0?0:g>255?255:g;if(inv)g=255-g;o[j]=o[j+1]=o[j+2]=g;o[j+3]=255;}
+    }
+  }else{
+    const sh=I.ba>8?Math.max(0,I.bs-8):0;
+    const ycc=photo.startsWith('YBR');
+    const set=(j,a,b,c)=>{if(ycc){o[j]=a+1.402*(c-128);o[j+1]=a-.344136*(b-128)-.714136*(c-128);o[j+2]=a+1.772*(b-128);}else{o[j]=a;o[j+1]=b;o[j+2]=c;}o[j+3]=255;};
+    if(photo==='YBR_FULL_422'&&raw.length<n*3*bpp){
+      for(let i=0;i<n;i+=2){const b=i*2;set(i*4,raw[b],raw[b+2],raw[b+3]);if(i+1<n)set(i*4+4,raw[b+1],raw[b+2],raw[b+3]);}
+    }else{
+      for(let i=0,j=0;i<n;i++,j+=4){let a,b,c;
+        if(planar===1){a=rd(i);b=rd(n+i);c=rd(2*n+i);}else{a=rd(i*3);b=rd(i*3+1);c=rd(i*3+2);}
+        if(sh){a>>=sh;b>>=sh;c>>=sh;}set(j,a,b,c);}
+    }
+  }
+  const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').putImageData(img,0,0);return cv;
+}
+
+async function renderFrame(d,k,winMode){
+  const I=d.I;
+  if(!I.rows||!I.cols)throw new Error('缺少影像尺寸資訊');
+  if(![8,16,32].includes(I.ba))throw new Error('不支援 '+I.ba+' 位元的像素資料');
+  if(d.frags){
+    const g=frameGroups(d)[k];if(!g||!g.length)throw new Error('找不到第 '+(k+1)+' 格影像資料');
+    const bytes=g.length===1?d.u8.subarray(g[0].off,g[0].off+g[0].len):concat(g.map(f=>d.u8.subarray(f.off,f.off+f.len)));
+    if(d.ts===TS_RLE)return rawToCanvas(decodeRLE(bytes,I),true,I,winMode,0);
+    const isJ2K=/\.4\.9[01]$|\.4\.20[123]$/.test(d.ts);
+    let bmp;
+    try{bmp=await createImageBitmap(new Blob([bytes],{type:isJ2K?'image/jp2':'image/jpeg'}));}
+    catch(e){throw new Error('瀏覽器無法解碼 '+(TS_NAMES[d.ts]||d.ts)+' 壓縮格式');}
+    const cv=document.createElement('canvas');cv.width=bmp.width;cv.height=bmp.height;cv.getContext('2d').drawImage(bmp,0,0);if(bmp.close)bmp.close();return cv;
+  }
+  if(!d.pixel)throw new Error('檔案中沒有影像資料');
+  let fs=I.rows*I.cols*I.spp*I.ba/8;
+  if(I.photo==='YBR_FULL_422'&&I.spp===3)fs=I.rows*I.cols*2*I.ba/8;
+  if(d.pixel.len<fs*(k+1))throw new Error('影像資料長度不足，檔案可能不完整');
+  const raw=d.u8.subarray(d.pixel.off+k*fs,d.pixel.off+(k+1)*fs);
+  return rawToCanvas(raw,d.le,I,winMode);
+}
+function canvasBlob(cv,fmt){return new Promise((res,rej)=>cv.toBlob(b=>b?res(b):rej(new Error('影像編碼失敗')),fmt==='jpg'?'image/jpeg':'image/png',.95));}
+
+/* ================= App state & UI ================= */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let seq=0;
+const imgItems=[];  // {id,name,blob,imgData,url,sample,out,err}
+const dcmItems=[];  // {id,name,path,d,err,sample,preview}
+let study=newStudy();
+function newStudy(){const now=new Date();return {studyUID:uid(),seriesUID:uid(),fsUID:uid(),date:daStr(now),time:tmStr(now)};}
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,3200);}
+function fmtSize(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB';}
+function radio(name){const r=document.querySelector('input[name="'+name+'"]:checked');return r?r.value:'';}
+function baseName(p){const s=p.split('/').pop();const i=s.lastIndexOf('.');return i>0?s.slice(0,i):s;}
+function stripExt(p){const parts=p.split('/');const f=parts.pop();const i=f.lastIndexOf('.');parts.push(i>0&&/^\.(dcm|dicom|dic|ima)$/i.test(f.slice(i))?f.slice(0,i):f);return parts.join('/');}
+
+function setTab(which){
+  const img=which==='img';
+  $('tab-img').setAttribute('aria-selected',img);$('tab-dcm').setAttribute('aria-selected',!img);
+  $('p-img').hidden=!img;$('p-dcm').hidden=img;
+}
+$('tab-img').onclick=()=>setTab('img');$('tab-dcm').onclick=()=>setTab('dcm');
+
+/* ---- downloads ---- */
+let dlPromise=null;
+function getDL(){if(!dlPromise)dlPromise=(window.claude&&typeof window.claude.use==='function')?Promise.resolve(window.claude.use('downloads')).catch(()=>null):Promise.resolve(null);return dlPromise;}
+getDL();
+async function saveFile(name,blob){
+  const dl=await getDL();
+  if(dl){try{await dl.save({filename:name,data:blob});toast('已下載 '+name);}
+    catch(e){const c=e&&e.code;toast(c==='declined'?'已取消下載':c==='rate_limited'?'已有一個下載確認視窗開啟中':'下載失敗：'+((e&&e.message)||e));}
+    return;}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);
+}
+
+/* ---- image tab ---- */
+function readMeta(){
+  const bd=$('bd').value?$('bd').value.replace(/-/g,''):'';
+  return {pn:$('pn').value.trim()||'ANONYMOUS',pid:$('pid').value.trim()||'ANON0001',sex:$('sex').value,bd,
+    sd:$('sd').value.trim()||'Secondary Capture',acc:$('acc').value.trim(),mod:$('mod').value};
+}
+function convertImages(){
+  const m=readMeta(),cm=radio('color');let no=0;
+  for(const it of imgItems){if(!it.imgData)continue;no++;
+    try{it.out=buildImageDicom(it.imgData,cm,m,study,no);it.err=null;}catch(e){it.out=null;it.err=e.message;}}
+  renderImgList();
+}
+let convT=null;
+function scheduleConvert(){clearTimeout(convT);convT=setTimeout(convertImages,200);}
+$('f-img').addEventListener('input',scheduleConvert);$('f-img').addEventListener('change',scheduleConvert);
+$('f-img').addEventListener('submit',e=>e.preventDefault());
+
+function renderImgList(){
+  const list=$('list-img');const ok=imgItems.filter(i=>i.out);
+  $('cnt-img').textContent=imgItems.length?`${imgItems.length} 張圖片 · ${ok.length} 張已轉換 · 共 ${fmtSize(ok.reduce((s,i)=>s+i.out.bytes.length,0))}`:'';
+  $('dl-img').disabled=!ok.length;
+  $('dl-img').textContent=radio('out')==='dir'?'下載 DICOMDIR (ZIP)':'下載 .dcm (ZIP)';
+  if(!imgItems.length){list.innerHTML='<div class="empty">還沒有圖片。拖曳 JPG 或 PNG 到上方區域，就會立刻轉成 DICOM。</div>';return;}
+  let no=0;
+  list.innerHTML=imgItems.map(it=>{
+    const st=it.err?`<span class="pill err">失敗</span>`:it.out?`<span class="pill ok">已轉換</span>`:`<span class="pill warn">處理中</span>`;
+    const inst=it.out?++no:null;
+    const meta=it.err?esc(it.err):it.out?`<b>IM${String(inst).padStart(6,'0')}</b> · ${it.out.w}×${it.out.h} · ${it.out.gray?'MONOCHROME2':'RGB'} · ${fmtSize(it.out.bytes.length)}`:'';
+    return `<div class="item" data-id="${it.id}"><div class="thumb">${it.url?`<img alt="" src="${it.url}">`:''}</div>
+      <div class="info"><div class="name">${esc(it.name)} ${it.sample?'<span class="pill ex">範例</span>':''} ${st}</div><div class="meta">${meta}</div></div>
+      <div class="ops"><button type="button" class="ghost" data-rm="${it.id}" aria-label="移除 ${esc(it.name)}">✕</button></div></div>`;
+  }).join('');
+}
+$('list-img').addEventListener('click',e=>{const id=e.target.closest('[data-rm]')?.dataset.rm;if(!id)return;
+  const i=imgItems.findIndex(x=>String(x.id)===id);if(i>=0){if(imgItems[i].url)URL.revokeObjectURL(imgItems[i].url);imgItems.splice(i,1);}convertImages();});
+$('clr-img').onclick=()=>{for(const it of imgItems)if(it.url)URL.revokeObjectURL(it.url);imgItems.length=0;study=newStudy();convertImages();};
+
+async function addImages(entries,sample){
+  if(!sample){for(let i=imgItems.length-1;i>=0;i--)if(imgItems[i].sample){URL.revokeObjectURL(imgItems[i].url);imgItems.splice(i,1);}}
+  const added=entries.map(e=>({id:++seq,name:e.path,blob:e.blob,url:URL.createObjectURL(e.blob),sample:!!sample}));
+  imgItems.push(...added);renderImgList();
+  for(const it of added){try{it.imgData=await decodeImage(it.blob);}catch(e){it.err='無法讀取這張圖片';}}
+  convertImages();
+}
+
+$('dl-img').onclick=async()=>{
+  const ok=imgItems.filter(i=>i.out);if(!ok.length)return;
+  const m=readMeta(),zip=new JSZip(),mode=radio('out');
+  const safe=s=>s.replace(/[\\/:*?"<>|^\s]+/g,'_');
+  if(mode==='dir'){
+    const imgs=ok.map((it,i)=>{const fn='IM'+String(i+1).padStart(6,'0');zip.file('DICOM/'+fn,it.out.bytes);return {fileId:['DICOM',fn],sop:it.out.sop,instNo:i+1};});
+    zip.file('DICOMDIR',buildDicomdir(m,study,imgs,study.fsUID));
+  }else{const used={};for(const it of ok){let b=baseName(it.name);if(used[b])b+='_'+(++used[b]);else used[b]=1;zip.file(b+'.dcm',it.out.bytes);}}
+  const blob=await zip.generateAsync({type:'blob',compression:'STORE'});
+  await saveFile((mode==='dir'?'DICOMDIR_':'DICOM_')+safe(m.pid)+'_'+study.date+'.zip',blob);
+};
+
+/* ---- dicom tab ---- */
+async function addDicoms(entries,sample){
+  if(!sample){for(let i=dcmItems.length-1;i>=0;i--)if(dcmItems[i].sample)dcmItems.splice(i,1);}
+  const added=[];
+  for(const e of entries){const it={id:++seq,name:e.path,sample:!!sample};
+    try{it.d=await parseDicom(await e.blob.arrayBuffer());}catch(err){it.err=err.message||'無法解析';}
+    added.push(it);}
+  dcmItems.push(...added);
+  await Promise.all(added.map(renderPreview));
+  renderDcmList();
+  const dirOnly=added.length&&added.every(i=>i.d&&i.d.isDir);
+  if(dirOnly)toast('只收到 DICOMDIR 索引檔。請上傳整個資料夾或 ZIP，裡面要有影像檔。');
+}
+async function renderPreview(it){
+  it.preview=null;it.perr=null;
+  if(!it.d||it.d.isDir)return;
+  try{it.preview=await renderFrame(it.d,0,radio('win'));}catch(e){it.perr=e.message;}
+}
+function renderDcmList(){
+  const list=$('list-dcm');
+  const ok=dcmItems.filter(i=>i.preview);
+  const frames=ok.reduce((s,i)=>s+(radio('frames')==='all'?frameCount(i.d):1),0);
+  $('cnt-dcm').textContent=dcmItems.length?`${dcmItems.length} 個檔案 · ${ok.length} 個影像 · 將輸出 ${frames} 張圖片`:'';
+  $('dl-dcm').disabled=!ok.length;
+  if(!dcmItems.length){list.innerHTML='<div class="empty">還沒有 DICOM 檔。拖曳 .dcm、DICOMDIR 資料夾或 ZIP 到上方區域。</div>';return;}
+  list.innerHTML=dcmItems.map(it=>{
+    let st,meta='';const d=it.d;
+    if(it.err){st='<span class="pill err">無法讀取</span>';meta=esc(it.err);}
+    else if(d.isDir){st='<span class="pill warn">索引檔</span>';meta='DICOMDIR 只記錄檔案清單，沒有影像，已略過';}
+    else if(it.perr){st='<span class="pill err">無法轉換</span>';meta=esc(it.perr);}
+    else{st='<span class="pill ok">已轉換</span>';const n=frameCount(d);
+      meta=[d.tags.pn&&`<b>${esc(d.tags.pn)}</b>`,d.tags.mod,`${d.I.cols}×${d.I.rows}`,n>1?n+' 格':'',d.I.photo,TS_NAMES[d.ts]||d.ts].filter(Boolean).join(' · ');}
+    const n=d&&!d.isDir&&!it.err?frameCount(d):1;
+    return `<div class="item" data-id="${it.id}"><div class="thumb" data-thumb="${it.id}">${n>1?`<span class="fr">×${n}</span>`:''}</div>
+      <div class="info"><div class="name">${esc(it.name)} ${it.sample?'<span class="pill ex">範例</span>':''} ${st}</div><div class="meta">${meta}</div></div>
+      <div class="ops">${it.preview?`<button type="button" data-dl="${it.id}">下載</button>`:''}<button type="button" class="ghost" data-rm="${it.id}" aria-label="移除 ${esc(it.name)}">✕</button></div></div>`;
+  }).join('');
+  for(const it of dcmItems){if(it.preview){const t=list.querySelector(`[data-thumb="${it.id}"]`);if(t)t.prepend(it.preview);}}
+}
+async function outputsFor(it){
+  const fmt=radio('fmt'),win=radio('win'),n=radio('frames')==='all'?frameCount(it.d):1,base=stripExt(it.name),ext='.'+fmt,out=[];
+  for(let k=0;k<n;k++){const cv=k===0?it.preview:await renderFrame(it.d,k,win);
+    out.push({name:n>1?`${base}_f${String(k+1).padStart(3,'0')}${ext}`:base+ext,blob:await canvasBlob(cv,fmt)});}
+  return out;
+}
+$('list-dcm').addEventListener('click',async e=>{
+  const rm=e.target.closest('[data-rm]')?.dataset.rm,dl=e.target.closest('[data-dl]')?.dataset.dl;
+  if(rm){const i=dcmItems.findIndex(x=>String(x.id)===rm);if(i>=0)dcmItems.splice(i,1);renderDcmList();}
+  if(dl){const it=dcmItems.find(x=>String(x.id)===dl);if(!it)return;
+    try{const outs=await outputsFor(it);
+      if(outs.length===1)await saveFile(outs[0].name.split('/').pop(),outs[0].blob);
+      else{const z=new JSZip();for(const o of outs)z.file(o.name.split('/').pop(),o.blob);await saveFile(baseName(it.name)+'_frames.zip',await z.generateAsync({type:'blob',compression:'STORE'}));}
+    }catch(err){toast('轉換失敗：'+err.message);}}
+});
+$('dl-dcm').onclick=async()=>{
+  const ok=dcmItems.filter(i=>i.preview);if(!ok.length)return;
+  const btn=$('dl-dcm');btn.disabled=true;const label=btn.textContent;btn.textContent='打包中…';
+  try{const z=new JSZip();let fail=0;
+    for(const it of ok){try{for(const o of await outputsFor(it))z.file(o.name,o.blob);}catch(e){fail++;}}
+    await saveFile('DICOM_images_'+radio('fmt').toUpperCase()+'.zip',await z.generateAsync({type:'blob',compression:'STORE'}));
+    if(fail)toast(fail+' 個檔案的部分影格無法轉換');
+  }finally{btn.disabled=false;btn.textContent=label;}
+};
+$('clr-dcm').onclick=()=>{dcmItems.length=0;renderDcmList();};
+$('f-dcm').addEventListener('submit',e=>e.preventDefault());
+$('f-dcm').addEventListener('change',async e=>{
+  if(e.target.name==='win')await Promise.all(dcmItems.map(renderPreview));
+  renderDcmList();
+});
+
+/* ---- ingest: files, folders, zips ---- */
+const SKIP=/(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini|__MACOSX\/.*|\._[^/]*)$/i;
+async function classify(blob,path,out){
+  if(SKIP.test(path))return;
+  const h=new Uint8Array(await blob.slice(0,132).arrayBuffer());
+  const isZip=h[0]===0x50&&h[1]===0x4B&&h[2]===3&&h[3]===4;
+  if(isZip){let z;try{z=await JSZip.loadAsync(blob);}catch(e){out.bad.push(path);return;}
+    const prefix=path.replace(/\.zip$/i,'')+'/';
+    for(const e of Object.values(z.files)){if(e.dir)continue;await classify(await e.async('blob'),prefix+e.name,out);}return;}
+  const png=h[0]===0x89&&h[1]===0x50&&h[2]===0x4E&&h[3]===0x47,jpg=h[0]===0xFF&&h[1]===0xD8&&h[2]===0xFF,
+        gif=h[0]===0x47&&h[1]===0x49&&h[2]===0x46,bmp=h[0]===0x42&&h[1]===0x4D,webp=h[8]===0x57&&h[9]===0x45&&h[10]===0x42&&h[11]===0x50;
+  const dicm=h.length>=132&&h[128]===68&&h[129]===73&&h[130]===67&&h[131]===77;
+  if(dicm)out.dcm.push({blob,path});
+  else if(png||jpg||gif||bmp||webp)out.img.push({blob,path});
+  else if(/(^|\/)DICOMDIR$/i.test(path)||/\.(dcm|dicom|dic|ima)$/i.test(path)||((h[0]===8||h[0]===2)&&h[1]===0))out.dcm.push({blob,path});
+  else out.bad.push(path);
+}
+async function ingest(list,from){
+  const out={img:[],dcm:[],bad:[]};
+  for(const f of list)await classify(f.blob,f.path,out);
+  if(out.img.length)await addImages(out.img);
+  if(out.dcm.length)await addDicoms(out.dcm);
+  if(out.img.length&&!out.dcm.length)setTab('img');
+  else if(out.dcm.length&&!out.img.length)setTab('dcm');
+  const msg=[];
+  if(out.img.length&&out.dcm.length)msg.push(`已加入 ${out.img.length} 張圖片與 ${out.dcm.length} 個 DICOM 檔`);
+  else if(from==='img'&&out.dcm.length)msg.push('偵測到 DICOM 檔，已切換到「DICOM → 圖片」');
+  else if(from==='dcm'&&out.img.length)msg.push('偵測到一般圖片，已切換到「圖片 → DICOM」');
+  if(out.bad.length)msg.push(`${out.bad.length} 個檔案無法辨識，已略過`);
+  if(msg.length)toast(msg.join('；'));
+}
+function fileList(files){return Array.from(files).map(f=>({blob:f,path:f.webkitRelativePath||f.name}));}
+async function dropEntries(dt){
+  const items=Array.from(dt.items||[]).filter(i=>i.kind==='file');
+  const entries=items.map(i=>i.webkitGetAsEntry?i.webkitGetAsEntry():null);
+  if(!entries.length||entries.some(e=>!e))return fileList(dt.files);
+  const out=[];
+  const walk=async(entry,path)=>{
+    if(entry.isFile){const f=await new Promise((res,rej)=>entry.file(res,rej));out.push({blob:f,path:path+f.name});}
+    else if(entry.isDirectory){const r=entry.createReader();let batch;
+      do{batch=await new Promise((res,rej)=>r.readEntries(res,rej));for(const e of batch)await walk(e,path+entry.name+'/');}while(batch.length);}
+  };
+  for(const e of entries)await walk(e,'');
+  return out;
+}
+for(const kind of ['img','dcm']){
+  const zone=$('drop-'+kind),inp=$('in-'+kind),dir=$('in-'+kind+'-dir');
+  $('pick-'+kind).onclick=e=>{e.stopPropagation();inp.click();};
+  $('pick-'+kind+'-dir').onclick=e=>{e.stopPropagation();dir.click();};
+  zone.onclick=()=>inp.click();
+  zone.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inp.click();}};
+  for(const el of [inp,dir])el.onchange=async()=>{const l=fileList(el.files);el.value='';await ingest(l,kind);};
+  zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('over');});
+  zone.addEventListener('dragleave',()=>zone.classList.remove('over'));
+  zone.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();zone.classList.remove('over');await ingest(await dropEntries(e.dataTransfer),kind);});
+}
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',async e=>{e.preventDefault();const from=$('p-img').hidden?'dcm':'img';await ingest(await dropEntries(e.dataTransfer),from);});
+
+/* ---- sample so the page opens in a working state ---- */
+async function makeSample(){
+  const c=document.createElement('canvas');c.width=512;c.height=512;const x=c.getContext('2d');
+  x.fillStyle='#000';x.fillRect(0,0,512,512);
+  let g=x.createRadialGradient(256,280,40,256,280,260);g.addColorStop(0,'#9a9a9a');g.addColorStop(1,'#111');
+  x.fillStyle=g;x.beginPath();x.ellipse(256,290,200,230,0,0,Math.PI*2);x.fill();
+  x.fillStyle='#262626';for(const cx of [170,342]){x.beginPath();x.ellipse(cx,270,72,130,0,0,Math.PI*2);x.fill();}
+  x.strokeStyle='#d8d8d8';x.lineWidth=14;x.beginPath();x.moveTo(256,70);x.lineTo(256,480);x.stroke();
+  x.lineWidth=5;x.strokeStyle='#bdbdbd';for(let i=0;i<7;i++){const y=170+i*36;x.beginPath();x.moveTo(256,y);x.quadraticCurveTo(140,y-20,100,y+30);x.moveTo(256,y);x.quadraticCurveTo(372,y-20,412,y+30);x.stroke();}
+  x.fillStyle='#f0f0f0';x.font='600 22px "IBM Plex Mono",monospace';x.fillText('SAMPLE  R',24,40);
+  const blob=await canvasBlob(c,'png');
+  await addImages([{blob,path:'sample-chest.png'}],true);
+  const it=imgItems.find(i=>i.sample&&i.out);
+  if(it)await addDicoms([{blob:new Blob([it.out.bytes]),path:'sample-chest.dcm'}],true);
+}
+renderImgList();renderDcmList();
+makeSample();
+</script>
+
+</body>
+</html>
