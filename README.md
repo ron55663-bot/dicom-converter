@@ -5,7 +5,7 @@
 **線上使用：** https://ron55663-bot.github.io/dicom-converter/
 
 ## 功能
-- **圖片 → DICOM**：多張圖片、資料夾或 ZIP；可填病患／檢查資料；輸出 DICOMDIR 資料夾或個別 .dcm（ZIP 打包）。Secondary Capture、Explicit VR Little Endian、UTF-8 字元集。
+- **圖片 → DICOM**：多張圖片、資料夾或 ZIP；可填病患／檢查資料；輸出 DICOMDIR 資料夾或個別 .dcm（ZIP 打包）。Secondary Capture、Explicit VR Little Endian。字元集：純英數不標示（相容性最好）；中文可選 UTF-8 (ISO_IR 192) 或 Big5（配合台灣舊版 PACS，如 INFINITT）。
 - **DICOM → 圖片**：單檔、DICOMDIR 資料夾或 ZIP；PNG／JPG；窗寬窗位；多影格。支援未壓縮、RLE、JPEG Baseline、Deflate。
 
 ## 限制

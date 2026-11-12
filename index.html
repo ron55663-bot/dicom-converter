@@ -129,7 +129,16 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
       <div class="field"><label>色彩 <code>(0028,0004)</code></label>
         <div class="seg"><label><input type="radio" name="color" value="auto" checked>自動</label><label><input type="radio" name="color" value="rgb">彩色 RGB</label><label><input type="radio" name="color" value="gray">灰階</label></div>
       </div>
-      <p class="hint">所有圖片會放進同一個檢查（Study）與序列（Series），依清單順序編號。下載的是 ZIP，解壓後即可用 DICOM 檢視器或燒錄軟體開啟。</p>
+      <div class="field"><label for="cs">中文字元集 <code>(0008,0005)</code></label>
+        <select id="cs">
+          <option value="auto">自動：純英數不標示，有中文用 UTF-8</option>
+          <option value="big5">Big5（台灣舊版 PACS，如 INFINITT）</option>
+          <option value="utf8">UTF-8 ISO_IR 192（一律標示）</option>
+        </select>
+      </div>
+      <p class="hint" id="cs-note"></p>
+      <p class="hint">所有圖片會放進同一個檢查（Study）與序列（Series），依清單順序編號。</p>
+      <p class="hint"><b>開啟方式：</b>下載的是 ZIP，<b>一定要先解壓縮</b>。檢視器要選「解壓後的資料夾」（打開後直接看得到 DICOMDIR 檔和 DICOM 資料夾的那一層），不要選 DICOM 子資料夾，也不要直接開 ZIP。</p>
     </form>
     <div class="main">
       <div class="drop" id="drop-img" tabindex="0">
@@ -190,7 +199,7 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
       <ul>
         <li>SOP 類別：Secondary Capture <span class="meta">1.2.840.10008.5.1.4.1.1.7</span></li>
         <li>傳輸語法：Explicit VR Little Endian，未壓縮，畫質不會損失</li>
-        <li>字元集 ISO_IR 192 (UTF-8)，中文姓名可正常保存</li>
+        <li>字元集：純英數不標示（相容性最好）；中文預設 ISO_IR 192 (UTF-8)，可改用 Big5 配合台灣舊版 PACS</li>
         <li>透明背景會以黑色填滿</li>
       </ul>
     </section>
@@ -226,10 +235,36 @@ const TS_NAMES={'1.2.840.10008.1.2':'Implicit LE','1.2.840.10008.1.2.1':'Explici
 const LONGVR=new Set(['OB','OW','OF','OD','OL','OV','SQ','UT','UN','UC','UR','SV','UV']);
 const UNDEF=0xFFFFFFFF;
 const enc=new TextEncoder();
+/* ---- 文字編碼：none（純 ASCII，不寫 0008,0005）／utf8（ISO_IR 192）／big5（台灣舊系統慣例，不寫 0008,0005） ---- */
+let big5Map=null;
+function getBig5Map(){
+  if(big5Map)return big5Map;
+  big5Map=new Map();const dec=new TextDecoder('big5');const pair=new Uint8Array(2);
+  for(let lead=0xA1;lead<=0xF9;lead++)for(let t=0x40;t<=0xFE;t++){
+    if(t>0x7E&&t<0xA1)continue;pair[0]=lead;pair[1]=t;
+    const ch=dec.decode(pair);const cp=ch.codePointAt(0);
+    if(ch.length===1&&cp!==0xFFFD&&!big5Map.has(ch))big5Map.set(ch,(lead<<8)|t);
+  }
+  return big5Map;
+}
+function encBig5(s){
+  const map=getBig5Map();const out=[];
+  for(const ch of s){const c=ch.codePointAt(0);
+    if(c<0x80){out.push(c);continue;}
+    const v=map.get(ch);if(v===undefined){out.push(0x3F);continue;}
+    out.push(v>>8,v&0xFF);}
+  return new Uint8Array(out);
+}
+let textMode='none';
+function encText(s){return textMode==='big5'?encBig5(s):enc.encode(s);}
+const isAscii=s=>/^[\x20-\x7E]*$/.test(s);
+/* Big5 次位元組可能是 0x5C「\」或 0x5E「^」，會被 DICOM 當成分隔字元 */
+function big5Conflicts(s){const r=[];for(const ch of s){if(ch.codePointAt(0)<0x80)continue;const v=getBig5Map().get(ch);if(v!==undefined&&((v&0xFF)===0x5C||(v&0xFF)===0x5E))r.push(ch);}return r;}
+function charsetEls(m){return m.cs==='utf8'?[S(8,5,'CS','ISO_IR 192')]:[];}
 
 function concat(arrs){let n=0;for(const a of arrs)n+=a.length;const o=new Uint8Array(n);let p=0;for(const a of arrs){o.set(a,p);p+=a.length;}return o;}
 function uid(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;let n=0n;for(const x of b)n=(n<<8n)|BigInt(x);return '2.25.'+n.toString();}
-function strBytes(s,vr){let b=enc.encode(s==null?'':String(s));if(b.length%2){const p=new Uint8Array(b.length+1);p.set(b);p[b.length]=vr==='UI'?0:0x20;b=p;}return b;}
+function strBytes(s,vr){let b=encText(s==null?'':String(s));if(b.length%2){const p=new Uint8Array(b.length+1);p.set(b);p[b.length]=vr==='UI'?0:0x20;b=p;}return b;}
 function u16(v){const b=new Uint8Array(2);new DataView(b.buffer).setUint16(0,v,true);return b;}
 function u32(v){const b=new Uint8Array(4);new DataView(b.buffer).setUint32(0,v,true);return b;}
 function elem(g,e,vr,val){
@@ -270,9 +305,9 @@ function buildImageDicom(imgData,colorMode,m,study,instNo){
     else{for(let i=0,j=0;i<n;i++,j+=4)px[i]=d[j];}
   }else{const len=n*3;px=new Uint8Array(len+(len%2));
     for(let i=0,j=0,k=0;i<n;i++,j+=4,k+=3){px[k]=d[j];px[k+1]=d[j+1];px[k+2]=d[j+2];}}
-  const sop=uid();
+  const sop=uid();textMode=m.cs;
   const els=[
-    S(8,5,'CS','ISO_IR 192'),S(8,8,'CS','DERIVED\\SECONDARY'),S(8,0x16,'UI',SC_CLASS),S(8,0x18,'UI',sop),
+    ...charsetEls(m),S(8,8,'CS','DERIVED\\SECONDARY'),S(8,0x16,'UI',SC_CLASS),S(8,0x18,'UI',sop),
     S(8,0x20,'DA',study.date),S(8,0x23,'DA',study.date),S(8,0x30,'TM',study.time),S(8,0x33,'TM',study.time),
     S(8,0x50,'SH',m.acc),S(8,0x60,'CS',m.mod),S(8,0x64,'CS','WSD'),S(8,0x90,'PN',''),
     S(8,0x1030,'LO',m.sd),S(8,0x103E,'LO','Converted images'),
@@ -286,11 +321,15 @@ function buildImageDicom(imgData,colorMode,m,study,instNo){
 }
 
 function buildDicomdir(m,study,images,fsUID){
+  textMode=m.cs;
   const rec=(type,next,lower,extra)=>concat([UL(4,0x1400,next),US(4,0x1410,0xFFFF),UL(4,0x1420,lower),S(4,0x1430,'CS',type),...extra]);
-  const pat=[S(8,5,'CS','ISO_IR 192'),S(0x10,0x10,'PN',m.pn),S(0x10,0x20,'LO',m.pid),S(0x10,0x30,'DA',m.bd),S(0x10,0x40,'CS',m.sex)];
-  const stu=[S(8,5,'CS','ISO_IR 192'),S(8,0x20,'DA',study.date),S(8,0x30,'TM',study.time),S(8,0x50,'SH',m.acc),S(8,0x1030,'LO',m.sd),S(0x20,0xD,'UI',study.studyUID),S(0x20,0x10,'SH','1')];
+  /* 與 DCMTK dcmmkdir 一致：空的選填欄位不寫入 PATIENT 記錄 */
+  const pat=[...charsetEls(m),S(0x10,0x10,'PN',m.pn),S(0x10,0x20,'LO',m.pid)];
+  if(m.bd)pat.push(S(0x10,0x30,'DA',m.bd));
+  if(m.sex)pat.push(S(0x10,0x40,'CS',m.sex));
+  const stu=[...charsetEls(m),S(8,0x20,'DA',study.date),S(8,0x30,'TM',study.time),S(8,0x50,'SH',m.acc),S(8,0x1030,'LO',m.sd),S(0x20,0xD,'UI',study.studyUID),S(0x20,0x10,'SH','1')];
   const ser=[S(8,0x60,'CS',m.mod),S(0x20,0xE,'UI',study.seriesUID),S(0x20,0x11,'IS','1')];
-  const img=im=>[S(4,0x1500,'CS',im.fileId.join('\\')),S(4,0x1510,'UI',SC_CLASS),S(4,0x1511,'UI',im.sop),S(4,0x1512,'UI',TS_EXPLICIT),S(0x20,0x13,'IS',String(im.instNo))];
+  const img=im=>[S(4,0x1500,'CS',im.fileId.join('\\')),S(4,0x1510,'UI',SC_CLASS),S(4,0x1511,'UI',im.sop),S(4,0x1512,'UI',TS_EXPLICIT),S(8,8,'CS','DERIVED\\SECONDARY'),S(0x20,0x13,'IS',String(im.instNo))];
   const make=o=>[rec('PATIENT',0,o[1],pat),rec('STUDY',0,o[2],stu),rec('SERIES',0,o[3],ser),
     ...images.map((im,i)=>rec('IMAGE',i<images.length-1?o[4+i]:0,0,img(im)))];
   const meta=metaHeader(MEDIA_DIR,fsUID);
@@ -372,7 +411,9 @@ async function parseDicom(buf){
   const raw=k=>ds[k]?u8.subarray(ds[k].off,ds[k].off+ds[k].len):null;
   const cs=(()=>{const b=raw(0x00080005);return b?new TextDecoder('latin1').decode(b).trim():'';})();
   let textDec;try{textDec=new TextDecoder(/GB18030|GBK/.test(cs)?'gb18030':/ISO_IR 100/.test(cs)&&!/192/.test(cs)?'latin1':/ISO_IR 13|ISO 2022 IR 87/.test(cs)?'shift_jis':/ISO_IR 149|IR 149/.test(cs)?'euc-kr':'utf-8');}catch(e){textDec=new TextDecoder('utf-8');}
-  const str=k=>{const b=raw(k);return b?textDec.decode(b).replace(/[\0\s]+$/,'').trim():'';};
+  /* 沒有標示字元集、又不是合法 UTF-8 時，多半是台灣舊系統的 Big5 */
+  const decTxt=b=>{if(!cs&&b.some(x=>x>0x7F)){try{return new TextDecoder('utf-8',{fatal:true}).decode(b);}catch(e){try{return new TextDecoder('big5').decode(b);}catch(e2){}}}return textDec.decode(b);};
+  const str=k=>{const b=raw(k);return b?decTxt(b).replace(/[\0\s]+$/,'').trim():'';};
   const us=k=>{const e=ds[k];if(!e||e.len<2)return undefined;return new DataView(u8.buffer,u8.byteOffset).getUint16(e.off,e.le);};
   const num=k=>{const v=parseFloat(str(k).split('\\')[0]);return isFinite(v)?v:undefined;};
   const sopClass=str(0x00080016)||txt(meta.ds[0x00020002]);
@@ -522,8 +563,17 @@ async function saveFile(name,blob){
 /* ---- image tab ---- */
 function readMeta(){
   const bd=$('bd').value?$('bd').value.replace(/-/g,''):'';
-  return {pn:$('pn').value.trim()||'ANONYMOUS',pid:$('pid').value.trim()||'ANON0001',sex:$('sex').value,bd,
+  const m={pn:$('pn').value.trim()||'ANONYMOUS',pid:$('pid').value.trim()||'ANON0001',sex:$('sex').value,bd,
     sd:$('sd').value.trim()||'Secondary Capture',acc:$('acc').value.trim(),mod:$('mod').value};
+  const txt=m.pn+m.pid+m.sd+m.acc, ascii=isAscii(txt), sel=$('cs').value;
+  m.cs=ascii?(sel==='utf8'?'utf8':'none'):(sel==='big5'?'big5':'utf8');
+  let note;
+  if(ascii)note=sel==='utf8'?'目前全為英數字，仍會標示 ISO_IR 192。舊檢視器打不開時請改回「自動」。':'目前全為英數字，不標示字元集，所有檢視器都能讀。';
+  else if(m.cs==='big5'){const bad=big5Conflicts(txt);
+    note=bad.length?`⚠ 「${[...new Set(bad)].join('')}」的 Big5 編碼含有 DICOM 分隔符號，可能顯示錯誤，建議改用英文或拼音。`:'中文以 Big5 寫入、不標示字元集（台灣舊系統慣例，非 DICOM 標準）。';}
+  else note='含中文，標示 ISO_IR 192 (UTF-8)。舊版檢視器（如 INFINITT）若無法讀取 DICOMDIR，請改選 Big5，或姓名改用英文／拼音。';
+  const el=$('cs-note');if(el&&el.textContent!==note)el.textContent=note;
+  return m;
 }
 function convertImages(){
   const m=readMeta(),cm=radio('color');let no=0;
@@ -535,6 +585,7 @@ let convT=null;
 function scheduleConvert(){clearTimeout(convT);convT=setTimeout(convertImages,200);}
 $('f-img').addEventListener('input',scheduleConvert);$('f-img').addEventListener('change',scheduleConvert);
 $('f-img').addEventListener('submit',e=>e.preventDefault());
+readMeta();
 
 function renderImgList(){
   const list=$('list-img');const ok=imgItems.filter(i=>i.out);
