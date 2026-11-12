@@ -28,7 +28,7 @@
   --accent:#7da4ff; --accent-ink:#0b1424; --tag:#f0b24a; --ok:#4cc38a; --warn:#f0a050; --err:#ff7b6b; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
-.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:28px 56px}
+.wrap{max-width:880px;margin:0 auto;padding-inline:20px;padding-block:28px 56px}
 header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:22px}
 h1{font-family:var(--f-display);font-weight:600;font-size:clamp(26px,4vw,36px);line-height:1.1;margin:0;letter-spacing:-.01em;text-wrap:balance}
 h1 .arrow{color:var(--accent);padding-inline:.15em}
@@ -55,6 +55,7 @@ input[type=text],input[type=date],select{font:14px var(--f-body);color:var(--ink
 .seg label:has(input:checked){border-color:var(--accent);color:var(--accent);background:var(--surface);font-weight:500}
 .seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:1px}
 .hint{font-size:12px;color:var(--muted);margin:0}
+#cs-note{color:var(--warn);font-size:13px}
 .main{display:flex;flex-direction:column;gap:14px;min-width:0}
 .drop{border:1.5px dashed var(--line);border-radius:10px;background:var(--surface);padding:26px 18px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
 .drop.over{border-color:var(--accent);background:var(--sunken)}
@@ -90,6 +91,27 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
 .notes ul{padding-left:18px;margin:0;display:flex;flex-direction:column;gap:3px}
 .tree{font-family:var(--f-mono);font-size:12.5px;background:var(--sunken);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:0;overflow-x:auto;color:var(--ink);line-height:1.6}
 .tree em{color:var(--tag);font-style:normal}
+.simple{max-width:none}
+.simple form{display:flex;flex-direction:column;gap:14px}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.step h2{font-family:var(--f-display);font-weight:600;font-size:17px;margin:0;display:flex;align-items:center;gap:10px}
+.step .num{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:inline-grid;place-items:center;font-size:14px;flex:none}
+.opt{font:400 12px var(--f-body);color:var(--muted)}
+.field label .opt{margin-left:auto}
+.grid4{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:560px){.grid4,.grid2{grid-template-columns:minmax(0,1fr)}}
+.simple .list:empty{display:none}
+button.big{font-size:16px;padding:12px 18px;align-self:flex-start}
+.more{border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.more>summary{cursor:pointer;padding:12px 18px;font-weight:500;color:var(--muted);list-style:none;display:flex;align-items:center;gap:8px}
+.more>summary::-webkit-details-marker{display:none}
+.more>summary::before{content:"▸";transition:transform .15s}
+.more[open]>summary::before{transform:rotate(90deg)}
+.more>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px}
+.more-body{padding:4px 18px 18px;display:flex;flex-direction:column;gap:14px}
+.notes-wrap{margin-top:24px}
+.notes-wrap .notes{margin:0;padding:4px 18px 18px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:6px;font-size:14px;max-width:calc(100% - 32px);z-index:10}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -102,7 +124,7 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
     </div>
     <div class="hdr-r">
       <span class="privacy">● 檔案只在你的瀏覽器內處理，不會上傳</span>
-      <span class="ver" id="ver" title="版本 · 更新日期">v1.1.0 · 2026-11-12</span>
+      <span class="ver" id="ver" title="版本 · 更新日期">v1.2.0 · 2026-11-12</span>
     </div>
   </header>
 
@@ -112,51 +134,63 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
   </div>
 
   <!-- Image -> DICOM -->
-  <div class="panel" id="p-img" role="tabpanel" aria-labelledby="tab-img">
-    <form class="rail" id="f-img" autocomplete="off">
-      <h2>病患與檢查資料</h2>
-      <div class="field"><label for="pn">病患姓名 <code>(0010,0010)</code></label><input type="text" id="pn" placeholder="WANG^XIAOMING"></div>
-      <div class="row2">
-        <div class="field"><label for="pid">病歷號 <code>(0010,0020)</code></label><input type="text" id="pid" placeholder="ANON0001"></div>
-        <div class="field"><label for="sex">性別 <code>(0010,0040)</code></label><select id="sex"><option value="">—</option><option value="M">男 M</option><option value="F">女 F</option><option value="O">其他 O</option></select></div>
-      </div>
-      <div class="field"><label for="bd">出生日期 <code>(0010,0030)</code></label><input type="date" id="bd"></div>
-      <div class="field"><label for="sd">檢查描述 <code>(0008,1030)</code></label><input type="text" id="sd" placeholder="Secondary Capture"></div>
-      <div class="row2">
-        <div class="field"><label for="acc">檢查單號 <code>(0008,0050)</code></label><input type="text" id="acc"></div>
-        <div class="field"><label for="mod">儀器類別 <code>(0008,0060)</code></label>
-          <select id="mod"><option value="OT">OT 其他</option><option value="XC">XC 外部相機</option><option value="ES">ES 內視鏡</option><option value="US">US 超音波</option><option value="DX">DX 數位X光</option><option value="CR">CR 電腦X光</option><option value="SM">SM 顯微</option><option value="DOC">DOC 文件</option></select></div>
-      </div>
-      <h2>輸出</h2>
-      <div class="field"><label>格式</label>
-        <div class="seg"><label><input type="radio" name="out" value="dir" checked>DICOMDIR 資料夾</label><label><input type="radio" name="out" value="dcm">個別 .dcm 檔</label></div>
-      </div>
-      <div class="field"><label>色彩 <code>(0028,0004)</code></label>
-        <div class="seg"><label><input type="radio" name="color" value="auto" checked>自動</label><label><input type="radio" name="color" value="rgb">彩色 RGB</label><label><input type="radio" name="color" value="gray">灰階</label></div>
-      </div>
-      <div class="field"><label for="cs">中文字元集 <code>(0008,0005)</code></label>
-        <select id="cs">
-          <option value="auto">自動：純英數不標示，有中文用 UTF-8</option>
-          <option value="big5">Big5（台灣舊版 PACS，如 INFINITT）</option>
-          <option value="utf8">UTF-8 ISO_IR 192（一律標示）</option>
-        </select>
-      </div>
-      <p class="hint" id="cs-note"></p>
-      <p class="hint">所有圖片會放進同一個檢查（Study）與序列（Series），依清單順序編號。</p>
-      <p class="hint"><b>開啟方式：</b>下載的是 ZIP，<b>一定要先解壓縮</b>。檢視器要選「解壓後的資料夾」（打開後直接看得到 DICOMDIR 檔和 DICOM 資料夾的那一層），不要選 DICOM 子資料夾，也不要直接開 ZIP。</p>
+  <div class="simple" id="p-img" role="tabpanel" aria-labelledby="tab-img">
+    <form id="f-img" autocomplete="off">
+      <section class="step">
+        <h2><span class="num">1</span>加入圖片</h2>
+        <div class="drop" id="drop-img" tabindex="0">
+          <strong>拖曳 JPG、PNG 到這裡</strong>
+          <p>可一次放多張，或整個資料夾</p>
+          <div class="btns"><button type="button" id="pick-img">選擇圖片</button><button type="button" id="pick-img-dir">選擇資料夾</button></div>
+        </div>
+        <div class="bar"><span class="count" id="cnt-img"></span><button type="button" class="ghost" id="clr-img">清除全部</button></div>
+        <div class="list" id="list-img"></div>
+      </section>
+
+      <section class="step">
+        <h2><span class="num">2</span>病患資料 <span class="opt">全部選填</span></h2>
+        <div class="grid4">
+          <div class="field"><label for="pn">病患姓名</label><input type="text" id="pn" placeholder="例：CHEN^DAWEN"></div>
+          <div class="field"><label for="pid">病歷號</label><input type="text" id="pid" placeholder="例：A123456"></div>
+          <div class="field"><label for="bd">出生日期</label><input type="date" id="bd"></div>
+          <div class="field"><label for="sdate">檢查日期 <span class="opt">空白＝今天</span></label><input type="date" id="sdate"></div>
+        </div>
+        <p class="hint" id="cs-note"></p>
+      </section>
+
+      <section class="step">
+        <h2><span class="num">3</span>下載</h2>
+        <button type="button" class="primary big" id="dl-img">下載 DICOMDIR (ZIP)</button>
+        <p class="hint">下載的是 ZIP，<b>使用前一定要先解壓縮</b>。檢視器或燒光碟都用「看得到 DICOMDIR 檔和 DICOM 資料夾」的那一層。</p>
+      </section>
+
+      <details class="more">
+        <summary>其他設定</summary>
+        <div class="more-body">
+          <div class="grid2">
+            <div class="field"><label for="sex">性別 <code>(0010,0040)</code></label><select id="sex"><option value="">—</option><option value="M">男 M</option><option value="F">女 F</option><option value="O">其他 O</option></select></div>
+            <div class="field"><label for="mod">儀器類別 <code>(0008,0060)</code></label>
+              <select id="mod"><option value="OT">OT 其他</option><option value="XC">XC 外部相機</option><option value="ES">ES 內視鏡</option><option value="US">US 超音波</option><option value="DX">DX 數位X光</option><option value="CR">CR 電腦X光</option><option value="SM">SM 顯微</option><option value="DOC">DOC 文件</option></select></div>
+            <div class="field"><label for="sd">檢查描述 <code>(0008,1030)</code></label><input type="text" id="sd" placeholder="Secondary Capture"></div>
+            <div class="field"><label for="acc">檢查單號 <code>(0008,0050)</code></label><input type="text" id="acc"></div>
+          </div>
+          <div class="field"><label>輸出格式</label>
+            <div class="seg"><label><input type="radio" name="out" value="dir" checked>DICOMDIR 資料夾（可燒光碟）</label><label><input type="radio" name="out" value="dcm">個別 .dcm 檔</label></div>
+          </div>
+          <div class="field"><label>色彩 <code>(0028,0004)</code></label>
+            <div class="seg"><label><input type="radio" name="color" value="auto" checked>自動</label><label><input type="radio" name="color" value="rgb">彩色 RGB</label><label><input type="radio" name="color" value="gray">灰階</label></div>
+          </div>
+          <div class="field"><label for="cs">中文字元集 <code>(0008,0005)</code></label>
+            <select id="cs">
+              <option value="auto">自動：純英數不標示，有中文用 UTF-8</option>
+              <option value="big5">Big5（台灣舊版 PACS，如 INFINITT）</option>
+              <option value="utf8">UTF-8 ISO_IR 192（一律標示）</option>
+            </select>
+          </div>
+          <p class="hint">所有圖片放進同一個檢查（Study）與序列（Series），依清單順序編號。</p>
+        </div>
+      </details>
     </form>
-    <div class="main">
-      <div class="drop" id="drop-img" tabindex="0">
-        <strong>拖曳 JPG、PNG 到這裡</strong>
-        <p>可一次放多張，或整個資料夾。也支援 WebP、BMP、GIF。</p>
-        <div class="btns"><button type="button" id="pick-img">選擇圖片</button><button type="button" id="pick-img-dir">選擇資料夾</button></div>
-      </div>
-      <div class="bar">
-        <span class="count" id="cnt-img"></span>
-        <div class="actions"><button type="button" class="ghost" id="clr-img">清除全部</button><button type="button" class="primary" id="dl-img">下載 DICOMDIR (ZIP)</button></div>
-      </div>
-      <div class="list" id="list-img"></div>
-    </div>
   </div>
 
   <!-- DICOM -> Image -->
@@ -189,6 +223,7 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
     </div>
   </div>
 
+  <details class="more notes-wrap"><summary>技術說明</summary>
   <div class="notes">
     <section>
       <h3>DICOMDIR 輸出結構</h3>
@@ -216,6 +251,7 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
       </ul>
     </section>
   </div>
+  </details>
 </div>
 
 <input type="file" id="in-img" accept="image/*,.zip" multiple hidden>
@@ -231,7 +267,7 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
 const TS_IMPLICIT='1.2.840.10008.1.2', TS_EXPLICIT='1.2.840.10008.1.2.1', TS_BIG='1.2.840.10008.1.2.2',
       TS_DEFLATE='1.2.840.10008.1.2.1.99', TS_RLE='1.2.840.10008.1.2.5';
 const SC_CLASS='1.2.840.10008.5.1.4.1.1.7', MEDIA_DIR='1.2.840.10008.1.3.10';
-const IMPL_UID='2.25.302114775138479417337465291838906231201', IMPL_VER='WEBDCM_1_1_0';
+const IMPL_UID='2.25.302114775138479417337465291838906231201', IMPL_VER='WEBDCM_1_2_0';
 const TS_NAMES={'1.2.840.10008.1.2':'Implicit LE','1.2.840.10008.1.2.1':'Explicit LE','1.2.840.10008.1.2.2':'Explicit BE',
   '1.2.840.10008.1.2.1.99':'Deflate','1.2.840.10008.1.2.5':'RLE','1.2.840.10008.1.2.4.50':'JPEG Baseline',
   '1.2.840.10008.1.2.4.51':'JPEG Extended','1.2.840.10008.1.2.4.57':'JPEG Lossless','1.2.840.10008.1.2.4.70':'JPEG Lossless SV1',
@@ -568,22 +604,24 @@ async function saveFile(name,blob){
 /* ---- image tab ---- */
 function readMeta(){
   const bd=$('bd').value?$('bd').value.replace(/-/g,''):'';
-  const m={pn:$('pn').value.trim()||'ANONYMOUS',pid:$('pid').value.trim()||'ANON0001',sex:$('sex').value,bd,
+  const m={pn:$('pn').value.trim()||'ANONYMOUS',pid:$('pid').value.trim()||'ANON0001',sex:$('sex').value,bd,sdate:$('sdate').value?$('sdate').value.replace(/-/g,''):'',
     sd:$('sd').value.trim()||'Secondary Capture',acc:$('acc').value.trim(),mod:$('mod').value};
   const txt=m.pn+m.pid+m.sd+m.acc, ascii=isAscii(txt), sel=$('cs').value;
   m.cs=ascii?(sel==='utf8'?'utf8':'none'):(sel==='big5'?'big5':'utf8');
   let note;
-  if(ascii)note=sel==='utf8'?'目前全為英數字，仍會標示 ISO_IR 192。舊檢視器打不開時請改回「自動」。':'目前全為英數字，不標示字元集，所有檢視器都能讀。';
+  if(ascii)note=sel==='utf8'?'「其他設定」的字元集設為 UTF-8，舊檢視器打不開時請改回「自動」。':'';
   else if(m.cs==='big5'){const bad=big5Conflicts(txt);
     note=bad.length?`⚠ 「${[...new Set(bad)].join('')}」的 Big5 編碼含有 DICOM 分隔符號，可能顯示錯誤，建議改用英文或拼音。`:'中文以 Big5 寫入、不標示字元集（台灣舊系統慣例，非 DICOM 標準）。';}
-  else note='含中文，標示 ISO_IR 192 (UTF-8)。舊版檢視器（如 INFINITT）若無法讀取 DICOMDIR，請改選 Big5，或姓名改用英文／拼音。';
-  const el=$('cs-note');if(el&&el.textContent!==note)el.textContent=note;
+  else note='⚠ 有中文字。INFINITT 等舊版檢視器可能無法讀取，建議改用英文或拼音；或到「其他設定」把字元集改成 Big5。';
+  const el=$('cs-note');if(el){if(el.textContent!==note)el.textContent=note;el.hidden=!note;}
   return m;
 }
+/* 檢查日期：有填用填的，空白用今天 */
+function studyFor(m){return m.sdate?{...study,date:m.sdate}:study;}
 function convertImages(){
   const m=readMeta(),cm=radio('color');let no=0;
   for(const it of imgItems){if(!it.imgData)continue;no++;
-    try{it.out=buildImageDicom(it.imgData,cm,m,study,no);it.err=null;}catch(e){it.out=null;it.err=e.message;}}
+    try{it.out=buildImageDicom(it.imgData,cm,m,studyFor(m),no);it.err=null;}catch(e){it.out=null;it.err=e.message;}}
   renderImgList();
 }
 let convT=null;
@@ -596,8 +634,9 @@ function renderImgList(){
   const list=$('list-img');const ok=imgItems.filter(i=>i.out);
   $('cnt-img').textContent=imgItems.length?`${imgItems.length} 張圖片 · ${ok.length} 張已轉換 · 共 ${fmtSize(ok.reduce((s,i)=>s+i.out.bytes.length,0))}`:'';
   $('dl-img').disabled=!ok.length;
+  $('clr-img').hidden=!imgItems.length;
   $('dl-img').textContent=radio('out')==='dir'?'下載 DICOMDIR (ZIP)':'下載 .dcm (ZIP)';
-  if(!imgItems.length){list.innerHTML='<div class="empty">還沒有圖片。拖曳 JPG 或 PNG 到上方區域，就會立刻轉成 DICOM。</div>';return;}
+  if(!imgItems.length){list.innerHTML='';return;}
   let no=0;
   list.innerHTML=imgItems.map(it=>{
     const st=it.err?`<span class="pill err">失敗</span>`:it.out?`<span class="pill ok">已轉換</span>`:`<span class="pill warn">處理中</span>`;
@@ -622,14 +661,14 @@ async function addImages(entries,sample){
 
 $('dl-img').onclick=async()=>{
   const ok=imgItems.filter(i=>i.out);if(!ok.length)return;
-  const m=readMeta(),zip=new JSZip(),mode=radio('out');
+  const m=readMeta(),st=studyFor(m),zip=new JSZip(),mode=radio('out');
   const safe=s=>s.replace(/[\\/:*?"<>|^\s]+/g,'_');
   if(mode==='dir'){
     const imgs=ok.map((it,i)=>{const fn='IM'+String(i+1).padStart(6,'0');zip.file('DICOM/'+fn,it.out.bytes);return {fileId:['DICOM',fn],sop:it.out.sop,instNo:i+1};});
-    zip.file('DICOMDIR',buildDicomdir(m,study,imgs,study.fsUID));
+    zip.file('DICOMDIR',buildDicomdir(m,st,imgs,st.fsUID));
   }else{const used={};for(const it of ok){let b=baseName(it.name);if(used[b])b+='_'+(++used[b]);else used[b]=1;zip.file(b+'.dcm',it.out.bytes);}}
   const blob=await zip.generateAsync({type:'blob',compression:'STORE'});
-  await saveFile((mode==='dir'?'DICOMDIR_':'DICOM_')+safe(m.pid)+'_'+study.date+'.zip',blob);
+  await saveFile((mode==='dir'?'DICOMDIR_':'DICOM_')+safe(m.pid)+'_'+st.date+'.zip',blob);
 };
 
 /* ---- dicom tab ---- */
