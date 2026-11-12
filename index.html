@@ -33,6 +33,8 @@ header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-be
 h1{font-family:var(--f-display);font-weight:600;font-size:clamp(26px,4vw,36px);line-height:1.1;margin:0;letter-spacing:-.01em;text-wrap:balance}
 h1 .arrow{color:var(--accent);padding-inline:.15em}
 .sub{color:var(--muted);margin:6px 0 0;max-width:60ch}
+.hdr-r{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.ver{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
 .privacy{font-family:var(--f-mono);font-size:12px;color:var(--ok);border:1px solid currentColor;border-radius:4px;padding:4px 8px;white-space:nowrap}
 .tabs{display:inline-flex;background:var(--sunken);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px;margin-bottom:16px;max-width:100%}
 .tab{font:500 15px var(--f-body);border:0;background:transparent;color:var(--muted);padding:8px 16px;border-radius:6px;cursor:pointer;white-space:nowrap}
@@ -98,7 +100,10 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
       <h1>JPG・PNG <span class="arrow">⇄</span> DICOM</h1>
       <p class="sub">把一般圖片轉成 DICOM／DICOMDIR，或把 DICOM 影像轉回 PNG、JPG。拖進檔案就會立刻轉換。</p>
     </div>
-    <span class="privacy">● 檔案只在你的瀏覽器內處理，不會上傳</span>
+    <div class="hdr-r">
+      <span class="privacy">● 檔案只在你的瀏覽器內處理，不會上傳</span>
+      <span class="ver" id="ver" title="版本 · 更新日期">v1.1.0 · 2026-11-12</span>
+    </div>
   </header>
 
   <div class="tabs" role="tablist">
@@ -226,7 +231,7 @@ button.ghost{border-color:transparent;background:transparent;color:var(--muted);
 const TS_IMPLICIT='1.2.840.10008.1.2', TS_EXPLICIT='1.2.840.10008.1.2.1', TS_BIG='1.2.840.10008.1.2.2',
       TS_DEFLATE='1.2.840.10008.1.2.1.99', TS_RLE='1.2.840.10008.1.2.5';
 const SC_CLASS='1.2.840.10008.5.1.4.1.1.7', MEDIA_DIR='1.2.840.10008.1.3.10';
-const IMPL_UID='2.25.302114775138479417337465291838906231201', IMPL_VER='WEBDCM_1_0';
+const IMPL_UID='2.25.302114775138479417337465291838906231201', IMPL_VER='WEBDCM_1_1_0';
 const TS_NAMES={'1.2.840.10008.1.2':'Implicit LE','1.2.840.10008.1.2.1':'Explicit LE','1.2.840.10008.1.2.2':'Explicit BE',
   '1.2.840.10008.1.2.1.99':'Deflate','1.2.840.10008.1.2.5':'RLE','1.2.840.10008.1.2.4.50':'JPEG Baseline',
   '1.2.840.10008.1.2.4.51':'JPEG Extended','1.2.840.10008.1.2.4.57':'JPEG Lossless','1.2.840.10008.1.2.4.70':'JPEG Lossless SV1',
