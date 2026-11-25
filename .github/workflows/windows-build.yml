@@ -18,17 +18,17 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - run: npm ci
-      - name: Build NSIS installer and MSI
-        run: npm run tauri:build -- --target x86_64-pc-windows-msvc
+      - name: Build NSIS installer
+        run: npm run tauri:build -- --target x86_64-pc-windows-msvc --bundles nsis
       - name: Package portable executable
         shell: pwsh
         run: |
           $exe = "src-tauri/target/x86_64-pc-windows-msvc/release/dicom-converter-desktop.exe"
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item $exe artifacts/DICOM-Converter-Desktop-1.2.1-portable.exe
-          Compress-Archive -Path artifacts/DICOM-Converter-Desktop-1.2.1-portable.exe -DestinationPath artifacts/DICOM-Converter-Desktop-1.2.1-portable.zip -Force
+          New-Item -ItemType Directory -Force -Path work/portable | Out-Null
+          Copy-Item $exe work/portable/DICOM-Converter-Desktop-1.2.1-portable.exe
+          Compress-Archive -Path work/portable/DICOM-Converter-Desktop-1.2.1-portable.exe -DestinationPath artifacts/DICOM-Converter-Desktop-1.2.1-portable.zip -Force
           Copy-Item "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe" artifacts/ -Force
-          Copy-Item "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" artifacts/ -Force
       - uses: actions/upload-artifact@v4
         with:
           name: dicom-converter-desktop-windows-x64

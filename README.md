@@ -18,7 +18,7 @@ Run `npm ci`, then `npm run dev` and open `http://127.0.0.1:1420`. The browser v
 
 ## Desktop build
 
-See [BUILD.md](BUILD.md) for Windows prerequisites, development commands, packaging, installation and offline verification. The GitHub Actions workflow builds Windows x64 NSIS and MSI packages and a portable executable archive.
+See [BUILD.md](BUILD.md) for Windows prerequisites, development commands, packaging, installation and offline verification. The GitHub Actions workflow builds a Windows x64 NSIS installer and a portable executable archive.
 
 ## Project layout
 

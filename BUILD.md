@@ -28,16 +28,16 @@ On Windows:
 
 ```powershell
 npm ci
-npm run tauri:build -- --target x86_64-pc-windows-msvc
+npm run tauri:build -- --target x86_64-pc-windows-msvc --bundles nsis
 ```
 
-The expected outputs are under `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/` (NSIS `.exe` installer and MSI). The installers carry the WebView2 offline installer (about 127 MB extra). The portable executable ZIP is smaller and requires WebView2 Runtime already installed on the target machine.
+The expected output is the NSIS `.exe` installer under `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`. It carries the WebView2 offline installer. The portable executable ZIP is much smaller and requires WebView2 Runtime already installed on the target machine.
 
-The CI workflow is `.github/workflows/windows-build.yml`. Push a `v*` tag or run it manually from GitHub Actions. It uploads the NSIS installer, MSI installer and portable executable ZIP as `dicom-converter-desktop-windows-x64`. A Windows binary is not checked into this source tree.
+The CI workflow is `.github/workflows/windows-build.yml`. Push a `v*` tag or run it manually from GitHub Actions. It uploads the NSIS installer and portable executable ZIP as `dicom-converter-desktop-windows-x64`. A Windows binary is not checked into this source tree.
 
 ## Install
 
-Run the NSIS installer and follow its prompts, or install the MSI using Windows Installer. Both can install WebView2 offline. To use the portable version, extract the ZIP and run `DICOM-Converter-Desktop-1.2.1-portable.exe` on a machine that already has WebView2 Runtime.
+Run the NSIS installer and follow its prompts; it can install WebView2 offline. To use the portable version, extract the ZIP and run `DICOM-Converter-Desktop-1.2.1-portable.exe` on a machine that already has WebView2 Runtime.
 
 ## Offline verification
 
