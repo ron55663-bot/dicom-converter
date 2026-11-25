@@ -1,0 +1,36 @@
+name: Windows x64 build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - run: npm ci
+      - name: Build NSIS installer and MSI
+        run: npm run tauri:build -- --target x86_64-pc-windows-msvc
+      - name: Package portable executable
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/x86_64-pc-windows-msvc/release/dicom-converter-desktop.exe"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item $exe artifacts/DICOM-Converter-Desktop-1.2.1-portable.exe
+          Compress-Archive -Path artifacts/DICOM-Converter-Desktop-1.2.1-portable.exe -DestinationPath artifacts/DICOM-Converter-Desktop-1.2.1-portable.zip -Force
+          Copy-Item "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe" artifacts/ -Force
+          Copy-Item "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" artifacts/ -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dicom-converter-desktop-windows-x64
+          path: artifacts/*
+          if-no-files-found: error

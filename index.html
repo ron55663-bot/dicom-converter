@@ -6,19 +6,16 @@
 <style>:root{color-scheme:light}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
-<title>DICOM 影像轉換器</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<title>DICOM Converter Desktop</title>
 <style>
 /* Layout: a light-box workbench. Settings rail on the left, film strip of files on the right; DICOM tags shown in amber like viewer annotations. */
 :root{
   --bg:#eaeef2; --surface:#ffffff; --sunken:#f3f6f9; --ink:#121c26; --muted:#566676; --line:#d2dae2;
   --accent:#1f56c4; --accent-ink:#ffffff; --tag:#a35f00; --ok:#18794e; --warn:#a14a00; --err:#b42318;
   --viewer:#080b0e;
-  --f-display:"IBM Plex Sans Condensed","Noto Sans TC",system-ui,sans-serif;
-  --f-body:"IBM Plex Sans","Noto Sans TC",system-ui,-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
-  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --f-display:"Arial Narrow","Microsoft JhengHei",system-ui,sans-serif;
+  --f-body:"Microsoft JhengHei",system-ui,-apple-system,"PingFang TC",sans-serif;
+  --f-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0d1218; --surface:#141b23; --sunken:#10161d; --ink:#e2e8ee; --muted:#8d9cab; --line:#25303b;
@@ -123,8 +120,8 @@ button.big{font-size:16px;padding:12px 18px;align-self:flex-start}
       <p class="sub">把一般圖片轉成 DICOM／DICOMDIR，或把 DICOM 影像轉回 PNG、JPG。拖進檔案就會立刻轉換。</p>
     </div>
     <div class="hdr-r">
-      <span class="privacy">● 檔案只在你的瀏覽器內處理，不會上傳</span>
-      <span class="ver" id="ver" title="版本 · 更新日期">v1.2.0 · 2026-11-12</span>
+      <span class="privacy">● 檔案只在你的裝置內處理，不會上傳</span>
+      <span class="ver" id="ver" title="版本 · 更新日期">v1.2.1 · 2026-11-25</span>
     </div>
   </header>
 
@@ -260,7 +257,7 @@ button.big{font-size:16px;padding:12px 18px;align-self:flex-start}
 <input type="file" id="in-dcm-dir" webkitdirectory multiple hidden>
 <div class="toast" id="toast" hidden></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="./vendor/jszip.min.js"></script>
 <script>
 "use strict";
 /* ================= DICOM constants & helpers ================= */
@@ -588,17 +585,41 @@ function setTab(which){
 }
 $('tab-img').onclick=()=>setTab('img');$('tab-dcm').onclick=()=>setTab('dcm');
 
-/* ---- downloads ---- */
-let dlPromise=null;
-function getDL(){if(!dlPromise)dlPromise=(window.claude&&typeof window.claude.use==='function')?Promise.resolve(window.claude.use('downloads')).catch(()=>null):Promise.resolve(null);return dlPromise;}
-getDL();
+/* ---- native desktop bridge; browser file APIs remain available as fallback ---- */
+const tauri=window.__TAURI__||null;
+const isDesktop=!!(tauri&&tauri.dialog&&tauri.fs);
 async function saveFile(name,blob){
-  const dl=await getDL();
-  if(dl){try{await dl.save({filename:name,data:blob});toast('已下載 '+name);}
-    catch(e){const c=e&&e.code;toast(c==='declined'?'已取消下載':c==='rate_limited'?'已有一個下載確認視窗開啟中':'下載失敗：'+((e&&e.message)||e));}
+  if(isDesktop){
+    try{const path=await tauri.dialog.save({defaultPath:name,filters:[{name:'檔案',extensions:[name.split('.').pop()]}]});
+      if(!path){toast('已取消儲存');return;}
+      await tauri.fs.writeFile(path,new Uint8Array(await blob.arrayBuffer()));toast('已儲存 '+path.split(/[\\/]/).pop());}
+    catch(e){toast('儲存失敗：'+((e&&e.message)||e));}
     return;}
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);
+}
+
+async function pickNative(kind,directory){
+  if(!isDesktop)return false;
+  try{
+    const selection=await tauri.dialog.open({directory,multiple:!directory,recursive:directory,filters:directory?undefined:[{name:kind==='img'?'圖片與 ZIP':'DICOM 與 ZIP',extensions:kind==='img'?['jpg','jpeg','png','zip']:['dcm','dicom','dic','ima','zip']}]});
+    if(!selection)return true;
+    const paths=Array.isArray(selection)?selection:[selection], entries=[];
+    async function visit(path,relative){
+      const nodes=await tauri.fs.readDir(path);
+      for(const node of nodes){const child=path.replace(/[\\/]$/,'')+'/'+node.name,rel=relative?relative+'/'+node.name:node.name;
+        if(node.isDirectory)await visit(child,rel);
+        else entries.push({blob:new Blob([await tauri.fs.readFile(child)]),path:rel});}
+    }
+    for(const path of paths){
+      if(directory){const folder=path.split(/[\\/]/).filter(Boolean).pop();
+        const nodes=await tauri.fs.readDir(path);
+        for(const node of nodes){const child=path.replace(/[\\/]$/,'')+'/'+node.name,rel=folder+'/'+node.name;
+          if(node.isDirectory)await visit(child,rel);else entries.push({blob:new Blob([await tauri.fs.readFile(child)]),path:rel});}}
+      else{const name=path.split(/[\\/]/).pop();entries.push({blob:new Blob([await tauri.fs.readFile(path)]),path:name});}
+    }
+    await ingest(entries,kind);return true;
+  }catch(e){toast('讀取失敗：'+((e&&e.message)||e));return true;}
 }
 
 /* ---- image tab ---- */
@@ -788,10 +809,10 @@ async function dropEntries(dt){
 }
 for(const kind of ['img','dcm']){
   const zone=$('drop-'+kind),inp=$('in-'+kind),dir=$('in-'+kind+'-dir');
-  $('pick-'+kind).onclick=e=>{e.stopPropagation();inp.click();};
-  $('pick-'+kind+'-dir').onclick=e=>{e.stopPropagation();dir.click();};
-  zone.onclick=()=>inp.click();
-  zone.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inp.click();}};
+  $('pick-'+kind).onclick=async e=>{e.stopPropagation();if(!await pickNative(kind,false))inp.click();};
+  $('pick-'+kind+'-dir').onclick=async e=>{e.stopPropagation();if(!await pickNative(kind,true))dir.click();};
+  zone.onclick=async()=>{if(!await pickNative(kind,false))inp.click();};
+  zone.onkeydown=async e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(!await pickNative(kind,false))inp.click();}};
   for(const el of [inp,dir])el.onchange=async()=>{const l=fileList(el.files);el.value='';await ingest(l,kind);};
   zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('over');});
   zone.addEventListener('dragleave',()=>zone.classList.remove('over'));
