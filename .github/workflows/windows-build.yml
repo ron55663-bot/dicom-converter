@@ -18,6 +18,11 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - run: npm ci
+      - name: Test ISO9660 image and Windows virtual CD mount
+        shell: pwsh
+        run: |
+          npm test
+          ./tests/windows-iso-mount.ps1 -IsoPath work/dicom-iso-fixture.iso
       - name: Build NSIS installer
         run: npm run tauri:build -- --target x86_64-pc-windows-msvc --bundles nsis
       - name: Package portable executable

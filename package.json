@@ -7,6 +7,7 @@
     "prepare:dist": "node scripts/prepare-dist.cjs",
     "dev": "node scripts/dev-server.cjs",
     "build": "npm run prepare:dist",
+    "test": "node tests/iso9660.test.cjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

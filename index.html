@@ -158,7 +158,12 @@ button.big{font-size:16px;padding:12px 18px;align-self:flex-start}
       <section class="step">
         <h2><span class="num">3</span>下載</h2>
         <button type="button" class="primary big" id="dl-img">下載 DICOMDIR (ZIP)</button>
-        <p class="hint">下載的是 ZIP，<b>使用前一定要先解壓縮</b>。檢視器或燒光碟都用「看得到 DICOMDIR 檔和 DICOM 資料夾」的那一層。</p>
+        <p class="hint" id="export-hint">ZIP 使用前請先解壓縮。ISO 可掛載為 Windows 虛擬光碟。</p>
+        <div id="iso-controls" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:8px">
+          <div class="meta" id="iso-location">ISO 尚未產生</div><div class="meta" id="iso-mounted">尚未掛載</div>
+          <div class="meta" id="iso-validation">DICOMDIR 尚未驗證</div><div class="meta" id="iso-count"></div>
+          <div class="btns" style="margin-top:10px"><button type="button" id="mount-iso" disabled>掛載虛擬光碟</button><button type="button" id="open-iso" disabled>開啟掛載資料夾</button><button type="button" id="eject-iso" disabled>退出虛擬光碟</button></div>
+        </div>
       </section>
 
       <details class="more">
@@ -172,7 +177,7 @@ button.big{font-size:16px;padding:12px 18px;align-self:flex-start}
             <div class="field"><label for="acc">檢查單號 <code>(0008,0050)</code></label><input type="text" id="acc"></div>
           </div>
           <div class="field"><label>輸出格式</label>
-            <div class="seg"><label><input type="radio" name="out" value="dir" checked>DICOMDIR 資料夾（可燒光碟）</label><label><input type="radio" name="out" value="dcm">個別 .dcm 檔</label></div>
+            <div class="seg"><label><input type="radio" name="out" value="dir" checked>DICOMDIR 資料夾（ZIP）</label><label><input type="radio" name="out" value="dcm">個別 .dcm 檔（ZIP）</label><label><input type="radio" name="out" value="iso">DICOM CD / 虛擬光碟（ISO）</label></div>
           </div>
           <div class="field"><label>色彩 <code>(0028,0004)</code></label>
             <div class="seg"><label><input type="radio" name="color" value="auto" checked>自動</label><label><input type="radio" name="color" value="rgb">彩色 RGB</label><label><input type="radio" name="color" value="gray">灰階</label></div>
@@ -258,6 +263,7 @@ button.big{font-size:16px;padding:12px 18px;align-self:flex-start}
 <div class="toast" id="toast" hidden></div>
 
 <script src="./vendor/jszip.min.js"></script>
+<script src="./iso9660.js"></script>
 <script>
 "use strict";
 /* ================= DICOM constants & helpers ================= */
@@ -588,6 +594,15 @@ $('tab-img').onclick=()=>setTab('img');$('tab-dcm').onclick=()=>setTab('dcm');
 /* ---- native desktop bridge; browser file APIs remain available as fallback ---- */
 const tauri=window.__TAURI__||null;
 const isDesktop=!!(tauri&&tauri.dialog&&tauri.fs);
+let currentIsoPath='',currentIsoDrive='',currentIsoCount=0,currentIsoSize=0;
+function isoStatus(path,drive,count,size){
+  $('iso-controls').hidden=false;$('iso-location').textContent='ISO 檔案：'+(path||'尚未產生');
+  $('iso-mounted').textContent=drive?'已掛載為 '+drive+':\':'尚未掛載';
+  $('iso-validation').textContent=path?'DICOMDIR：已確認位於 ISO 根目錄':'DICOMDIR 尚未驗證';
+  if(path){currentIsoCount=count||currentIsoCount;currentIsoSize=size||currentIsoSize;}
+  $('iso-count').textContent=path?`DICOM instances：${currentIsoCount} · ISO 大小：${fmtSize(currentIsoSize)}`:'';
+  $('mount-iso').disabled=!path||!!drive||!isDesktop;$('open-iso').disabled=!drive||!isDesktop;$('eject-iso').disabled=!drive||!isDesktop;
+}
 async function saveFile(name,blob){
   if(isDesktop){
     try{const path=await tauri.dialog.save({defaultPath:name,filters:[{name:'檔案',extensions:[name.split('.').pop()]}]});
@@ -598,6 +613,23 @@ async function saveFile(name,blob){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);
 }
+async function saveIsoFile(name,blob,count){
+  if(!isDesktop){await saveFile(name,blob);currentIsoPath='';currentIsoDrive='';currentIsoCount=count;currentIsoSize=blob.size;
+    $('iso-controls').hidden=false;$('iso-location').textContent='ISO 已下載（儲存位置由瀏覽器決定）';$('iso-mounted').textContent='瀏覽器版本無法掛載虛擬光碟';
+    $('iso-validation').textContent='DICOMDIR 已放在 ISO 根目錄';$('iso-count').textContent=`DICOM instances：${count} · ISO 大小：${fmtSize(blob.size)}`;
+    $('mount-iso').disabled=true;$('open-iso').disabled=true;$('eject-iso').disabled=true;return;}
+  if(currentIsoDrive){toast('請先退出目前掛載的虛擬光碟，再產生新的 ISO');return;}
+  try{
+    const path=await tauri.dialog.save({defaultPath:name,filters:[{name:'ISO 光碟映像',extensions:['iso']}]});
+    if(!path){toast('已取消儲存');return;}
+    if(await tauri.fs.exists(path)){const yes=await tauri.dialog.confirm('此 ISO 檔案已存在。要覆寫嗎？',{title:'確認覆寫',kind:'warning'});if(!yes)return;}
+    await tauri.fs.writeFile(path,new Uint8Array(await blob.arrayBuffer()));
+    currentIsoPath=path;currentIsoDrive='';currentIsoCount=count;currentIsoSize=blob.size;isoStatus(path,'',count,blob.size);toast('ISO 已儲存 '+path.split(/[\\/]/).pop());
+  }catch(e){toast('ISO 儲存失敗：'+((e&&e.message)||e));}
+}
+$('mount-iso').onclick=async()=>{try{const result=await tauri.core.invoke('mount_iso',{path:currentIsoPath});currentIsoDrive=result.drive;isoStatus(currentIsoPath,currentIsoDrive,currentIsoCount,currentIsoSize);toast('已掛載為 '+currentIsoDrive+':');}catch(e){toast('掛載失敗：'+e);}};
+$('open-iso').onclick=async()=>{try{await tauri.core.invoke('open_mounted_folder',{driveLetter:currentIsoDrive});}catch(e){toast('無法開啟資料夾：'+e);}};
+$('eject-iso').onclick=async()=>{try{await tauri.core.invoke('eject_iso',{path:currentIsoPath});currentIsoDrive='';isoStatus(currentIsoPath,'',currentIsoCount,currentIsoSize);toast('已退出虛擬光碟');}catch(e){toast('退出失敗：'+e);}};
 
 async function pickNative(kind,directory){
   if(!isDesktop)return false;
@@ -656,7 +688,8 @@ function renderImgList(){
   $('cnt-img').textContent=imgItems.length?`${imgItems.length} 張圖片 · ${ok.length} 張已轉換 · 共 ${fmtSize(ok.reduce((s,i)=>s+i.out.bytes.length,0))}`:'';
   $('dl-img').disabled=!ok.length;
   $('clr-img').hidden=!imgItems.length;
-  $('dl-img').textContent=radio('out')==='dir'?'下載 DICOMDIR (ZIP)':'下載 .dcm (ZIP)';
+  const mode=radio('out');$('dl-img').textContent=mode==='iso'?'產生 DICOM CD ISO':mode==='dir'?'下載 DICOMDIR (ZIP)':'下載 .dcm (ZIP)';
+  if(mode==='iso'){isoStatus(currentIsoPath,currentIsoDrive,ok.length,0);}else $('iso-controls').hidden=true;
   if(!imgItems.length){list.innerHTML='';return;}
   let no=0;
   list.innerHTML=imgItems.map(it=>{
@@ -684,6 +717,14 @@ $('dl-img').onclick=async()=>{
   const ok=imgItems.filter(i=>i.out);if(!ok.length)return;
   const m=readMeta(),st=studyFor(m),zip=new JSZip(),mode=radio('out');
   const safe=s=>s.replace(/[\\/:*?"<>|^\s]+/g,'_');
+  if(mode==='iso'){
+    const instances=ok.map((it,i)=>{const fn='IM'+String(i+1).padStart(6,'0');return {fileId:['DICOM',fn],sop:it.out.sop,instNo:i+1,bytes:it.out.bytes,path:'DICOM/'+fn};});
+    const files=[{path:'DICOMDIR',bytes:buildDicomdir(m,st,instances,st.fsUID)},...instances.map(i=>({path:i.path,bytes:i.bytes}))];
+    try{const result=DicomIso9660.createIso9660(files,{volumeId:'DICOM_CD'});isoStatus(currentIsoPath,currentIsoDrive,result.instanceCount,result.size);
+      await saveIsoFile('DICOM_CD_'+safe(m.pid)+'_'+st.date+'.iso',result.blob,result.instanceCount);}
+    catch(e){toast('ISO 建立失敗：'+((e&&e.message)||e));}
+    return;
+  }
   if(mode==='dir'){
     const imgs=ok.map((it,i)=>{const fn='IM'+String(i+1).padStart(6,'0');zip.file('DICOM/'+fn,it.out.bytes);return {fileId:['DICOM',fn],sop:it.out.sop,instNo:i+1};});
     zip.file('DICOMDIR',buildDicomdir(m,st,imgs,st.fsUID));

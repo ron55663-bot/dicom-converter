@@ -6,3 +6,4 @@ fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(path.join(dist, 'vendor'), { recursive: true });
 fs.copyFileSync(path.join(root, 'index.html'), path.join(dist, 'index.html'));
 fs.copyFileSync(path.join(root, 'vendor', 'jszip.min.js'), path.join(dist, 'vendor', 'jszip.min.js'));
+fs.copyFileSync(path.join(root, 'iso9660.js'), path.join(dist, 'iso9660.js'));
